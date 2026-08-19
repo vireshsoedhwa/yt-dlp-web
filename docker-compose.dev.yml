@@ -1,0 +1,59 @@
+# Dev overrides — live Vite HMR, source mounts, exposed ports.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Access:
+#   Frontend (Vite HMR): http://localhost:3000
+#   Backend API:         http://localhost:8000
+#   Redis:               localhost:6379
+
+services:
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./downloads:/app/downloads
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    volumes:
+      - ./backend/app:/app/app
+      - ./downloads:/app/downloads
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    container_name: ytdlp-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source code for HMR
+      - ./frontend/src:/app/src
+      - ./frontend/tests:/app/tests
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/vitest.config.ts:/app/vitest.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json
+      # Mount package.json so new deps are picked up without rebuild
+      - ./frontend/package.json:/app/package.json
+      # Persist node_modules in a named volume (not overwritten by host)
+      - frontend_node_modules:/app/node_modules
+    environment:
+      # Leave VITE_API_BASE unset so the frontend uses relative /api paths,
+      # which Vite proxies to the backend (see vite.config.ts).
+      # This avoids CORS issues entirely in dev mode.
+      - NODE_ENV=development
+    depends_on:
+      - backend
+
+volumes:
+  frontend_node_modules:

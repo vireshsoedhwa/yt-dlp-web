@@ -1,0 +1,16 @@
+# yt-dlp — the core dependency
+# Pinned to >=2026.07.04 for YouTube anti-bot fixes.
+# Use the /api/update endpoint to self-upgrade without rebuilding.
+yt-dlp[default,curl-cffi]>=2026.07.04
+
+# Web framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Job queue
+rq
+redis
+
+# Utils
+pydantic

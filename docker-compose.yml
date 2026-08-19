@@ -1,0 +1,42 @@
+# Base services — shared between dev and prod.
+# Use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#       or: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ytdlp-redis
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ytdlp-backend
+    environment:
+      - DOWNLOAD_DIR=/app/downloads
+      - REDIS_URL=redis://redis:6379/0
+      - ARCHIVE_FILE=/app/downloads/.ytdlp-archive.txt
+      - DEDUP_TTL_SECONDS=3600
+      - PURGE_MAX_AGE_HOURS=3
+      - SESSION_DIR=/app/downloads/.session
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ytdlp-worker
+    command: ["python", "-m", "app.worker"]
+    environment:
+      - DOWNLOAD_DIR=/app/downloads
+      - REDIS_URL=redis://redis:6379/0
+      - ARCHIVE_FILE=/app/downloads/.ytdlp-archive.txt
+      - DEDUP_TTL_SECONDS=3600
+      - PURGE_MAX_AGE_HOURS=3
+      - SESSION_DIR=/app/downloads/.session
+    depends_on:
+      - redis
+    restart: unless-stopped

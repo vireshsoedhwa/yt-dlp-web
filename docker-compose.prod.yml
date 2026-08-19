@@ -1,0 +1,38 @@
+# Production overrides — built assets, nginx, no source mounts.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Access:
+#   App: http://localhost:8080 (nginx)
+
+services:
+  backend:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/app/downloads
+
+  worker:
+    volumes:
+      - ./downloads:/app/downloads
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    container_name: ytdlp-frontend
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: ytdlp-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
