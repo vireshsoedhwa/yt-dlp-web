@@ -27,9 +27,6 @@ def _make_fake_ydl(extract_info_return=None, fire_hook=True):
 
     if fire_hook:
         def fake_download(urls):
-            # Fire the progress hook so download_video captures a file.
-            # The hook is in the opts passed to YoutubeDL(), accessible
-            # via the mock's constructor call args.
             import app.core.yt_dlp_service as svc
             for call_obj in svc.yt_dlp.YoutubeDL.call_args_list:
                 opts = call_obj[0][0]
@@ -114,7 +111,8 @@ def test_download_video_calls_yt_dlp_download():
     fake_ydl = _make_fake_ydl()
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
-         patch("app.core.queue.register_file_for_session"):
+         patch("app.core.queue.register_file_for_session"), \
+         patch("os.path.isfile", return_value=True):
         from app.core.yt_dlp_service import download_video
         result = download_video(
             "https://example.com/video",
@@ -197,7 +195,7 @@ def test_download_video_includes_anti_403_opts():
 
 
 def test_download_video_includes_progress_hooks():
-    """download_video should register progress_hooks and postprocessor_hooks to capture filenames."""
+    """download_video should register progress_hooks and post_hooks to capture filenames."""
     fake_ydl = _make_fake_ydl()
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls:
@@ -206,61 +204,87 @@ def test_download_video_includes_progress_hooks():
 
     opts = mock_cls.call_args[0][0]
     assert "progress_hooks" in opts
-    assert "postprocessor_hooks" in opts
+    assert "post_hooks" in opts
     assert isinstance(opts["progress_hooks"], list)
-    assert isinstance(opts["postprocessor_hooks"], list)
+    assert isinstance(opts["post_hooks"], list)
     assert len(opts["progress_hooks"]) == 1
-    assert len(opts["postprocessor_hooks"]) == 1
+    assert len(opts["post_hooks"]) == 1
     # Both hooks should be callable
     assert callable(opts["progress_hooks"][0])
-    assert callable(opts["postprocessor_hooks"][0])
+    assert callable(opts["post_hooks"][0])
 
 
 def test_download_video_captures_finished_file():
     """progress_hooks hook should capture filepath when status is finished."""
+    tmpdir = tempfile.mkdtemp()
+    session_dir = os.path.join(tmpdir, "test-session-123")
+    os.makedirs(session_dir, exist_ok=True)
+    # Create the file on disk so the existence filter passes
+    filepath = os.path.join(session_dir, "Test Video [abc123]_1080p.mp4")
+    with open(filepath, "w") as f:
+        f.write("fake")
+
     fake_ydl = _make_fake_ydl(fire_hook=False)
 
     def fake_download(urls):
         opts = mock_cls.call_args[0][0]
         progress_hook = opts["progress_hooks"][0]
-        progress_hook({"status": "finished", "filepath": "/app/downloads/.session/test-session/Test Video [abc123]_1080p.mp4"})
+        progress_hook({"status": "finished", "filepath": filepath})
 
     fake_ydl.download.side_effect = fake_download
 
-    with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
-         patch("app.core.queue.register_file_for_session"):
-        from app.core.yt_dlp_service import download_video
-        result = download_video("https://example.com/video", quality="1080p", session_id="test-session-123")
+    try:
+        with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
+             patch("app.core.yt_dlp_service.SESSION_DIR", tmpdir), \
+             patch("app.core.queue.register_file_for_session"):
+            from app.core.yt_dlp_service import download_video
+            result = download_video("https://example.com/video", quality="1080p", session_id="test-session-123")
 
-    assert result["files"] == ["Test Video [abc123]_1080p.mp4"]
+        assert result["files"] == ["Test Video [abc123]_1080p.mp4"]
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def test_download_video_captures_multiple_files():
     """hooks should capture multiple files (e.g. video + audio merge)."""
+    tmpdir = tempfile.mkdtemp()
+    session_dir = os.path.join(tmpdir, "test-session-123")
+    os.makedirs(session_dir, exist_ok=True)
+    # Create files on disk so the existence filter passes
+    for name in ["video.mp4", "audio.webm", "Test Video [abc123]_1080p.mp4"]:
+        with open(os.path.join(session_dir, name), "w") as f:
+            f.write("fake")
+
     fake_ydl = _make_fake_ydl(fire_hook=False)
 
     def fake_download(urls):
         opts = mock_cls.call_args[0][0]
         progress_hook = opts["progress_hooks"][0]
-        postprocessor_hook = opts["postprocessor_hooks"][0]
+        post_hook = opts["post_hooks"][0]
         # progress hooks fire for intermediate downloads
-        progress_hook({"status": "finished", "filepath": "/app/downloads/.session/test-session/video.mp4"})
-        progress_hook({"status": "finished", "filepath": "/app/downloads/.session/test-session/audio.webm"})
-        # postprocessor hook fires for the final merged file
-        postprocessor_hook({"status": "finished", "filepath": "/app/downloads/.session/test-session/Test Video [abc123]_1080p.mp4"})
+        progress_hook({"status": "finished", "filepath": os.path.join(session_dir, "video.mp4")})
+        progress_hook({"status": "finished", "filepath": os.path.join(session_dir, "audio.webm")})
+        # post hook fires for the final merged file
+        post_hook(os.path.join(session_dir, "Test Video [abc123]_1080p.mp4"))
 
     fake_ydl.download.side_effect = fake_download
 
-    with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
-         patch("app.core.queue.register_file_for_session"):
-        from app.core.yt_dlp_service import download_video
-        result = download_video("https://example.com/video", quality="1080p", session_id="test-session-123")
+    try:
+        with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
+             patch("app.core.yt_dlp_service.SESSION_DIR", tmpdir), \
+             patch("app.core.queue.register_file_for_session"):
+            from app.core.yt_dlp_service import download_video
+            result = download_video("https://example.com/video", quality="1080p", session_id="test-session-123")
 
-    # Should capture all files (intermediate + final), deduplicated
-    assert len(result["files"]) == 3
-    assert "video.mp4" in result["files"]
-    assert "audio.webm" in result["files"]
-    assert "Test Video [abc123]_1080p.mp4" in result["files"]
+        # Should capture all files (intermediate + final), deduplicated
+        assert len(result["files"]) == 3
+        assert "video.mp4" in result["files"]
+        assert "audio.webm" in result["files"]
+        assert "Test Video [abc123]_1080p.mp4" in result["files"]
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def test_download_video_no_files_when_hook_not_called():
@@ -279,7 +303,8 @@ def test_download_video_filename_includes_quality_suffix():
     fake_ydl = _make_fake_ydl()
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
-         patch("app.core.queue.register_file_for_session"):
+         patch("app.core.queue.register_file_for_session"), \
+         patch("os.path.isfile", return_value=True):
         from app.core.yt_dlp_service import download_video
         download_video("https://example.com/video", quality="720p", session_id="sess-1")
 
@@ -320,21 +345,33 @@ def test_download_video_no_postprocessor_when_not_audio():
 
 def test_download_video_registers_files_for_session():
     """download_video should call register_file_for_session for each downloaded file."""
+    tmpdir = tempfile.mkdtemp()
+    session_dir = os.path.join(tmpdir, "sess-1")
+    os.makedirs(session_dir, exist_ok=True)
+    filepath = os.path.join(session_dir, "Test [abc123]_1080p.mp4")
+    with open(filepath, "w") as f:
+        f.write("fake")
+
     fake_ydl = _make_fake_ydl(fire_hook=False)
 
     def fake_download(urls):
         opts = mock_cls.call_args[0][0]
         progress_hook = opts["progress_hooks"][0]
-        progress_hook({"status": "finished", "filepath": "/app/downloads/.session/sess-1/Test [abc123]_1080p.mp4"})
+        progress_hook({"status": "finished", "filepath": filepath})
 
     fake_ydl.download.side_effect = fake_download
 
-    with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
-         patch("app.core.queue.register_file_for_session") as mock_register:
-        from app.core.yt_dlp_service import download_video
-        result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
+    try:
+        with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl) as mock_cls, \
+             patch("app.core.yt_dlp_service.SESSION_DIR", tmpdir), \
+             patch("app.core.queue.register_file_for_session") as mock_register:
+            from app.core.yt_dlp_service import download_video
+            result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
 
-    mock_register.assert_called_once_with("sess-1", "Test [abc123]_1080p.mp4")
+        mock_register.assert_called_once_with("sess-1", "Test [abc123]_1080p.mp4")
+    finally:
+        import shutil
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def test_download_video_does_not_register_files_without_session():
@@ -354,7 +391,8 @@ def test_download_video_result_includes_quality_and_format():
     fake_ydl = _make_fake_ydl()
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
-         patch("app.core.queue.register_file_for_session"):
+         patch("app.core.queue.register_file_for_session"), \
+         patch("os.path.isfile", return_value=True):
         from app.core.yt_dlp_service import download_video
         result = download_video("https://example.com/video", quality="720p", session_id="sess-1")
 

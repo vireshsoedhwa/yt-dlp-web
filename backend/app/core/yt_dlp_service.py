@@ -117,10 +117,22 @@ def download_video(
             "preferredquality": "192",
         }]
 
-    # Capture the actual filename(s) via both progress_hooks and postprocessor_hooks.
-    # progress_hooks fire when each stream download finishes (video, audio separately).
-    # postprocessor_hooks fire when FFmpeg finishes merging/converting -- this is
-    # where the FINAL filename is available (the merged output or the MP3).
+    # Capture the actual filename(s).
+    #
+    # progress_hooks fire when each stream download finishes (video, audio).
+    # For audio-only with MP3 postprocessing, the progress hook captures the
+    # raw .mp4/.webm file which gets deleted after conversion — so we can't
+    # rely on it alone.
+    #
+    # post_hooks fire AFTER all postprocessing is complete, receiving the
+    # final filepath as a string (not a dict). This is where the .mp3 path
+    # is available after FFmpegExtractAudio conversion.
+    #
+    # Strategy:
+    # - Always use post_hooks to capture the final filename(s)
+    # - Also use progress_hooks to capture files when no postprocessing happens
+    #   (video downloads where yt-dlp merges video+audio without separate PPs)
+    # - Deduplicate via seen_files set
     downloaded_files: list[str] = []
     seen_files: set[str] = set()
 
@@ -134,15 +146,25 @@ def download_video(
         if d.get("status") == "finished":
             _capture_file(d.get("filepath") or d.get("filename"))
 
-    def _postprocessor_hook(d: dict) -> None:
-        if d.get("status") == "finished":
-            _capture_file(d.get("filepath") or d.get("filename"))
+    def _post_hook(filepath: str) -> None:
+        _capture_file(filepath)
 
     ydl_opts["progress_hooks"] = [_progress_hook]
-    ydl_opts["postprocessor_hooks"] = [_postprocessor_hook]
+    ydl_opts["post_hooks"] = [_post_hook]
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
+
+    # Filter out files that were deleted during postprocessing
+    # (e.g. the raw .mp4 audio file deleted after MP3 conversion)
+    downloaded_files = [
+        f for f in downloaded_files
+        if os.path.isfile(
+            os.path.join(
+                SESSION_DIR, session_id, f
+            ) if session_id else os.path.join(SESSION_DIR, f)
+        )
+    ]
 
     # Register files to session
     if session_id and downloaded_files:
