@@ -8,7 +8,6 @@ All POST /api/download tests include X-Session-ID header.
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 from rq.exceptions import NoSuchJobError
-from rq.job import Job
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -23,11 +22,11 @@ def test_start_download_enqueues_job(fake_queue, fake_job):
     """POST /api/download should enqueue a job and return job_id + queued status."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url") as mock_set:
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session") as mock_set:
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
-            "format": "bestvideo+bestaudio/best",
+            "quality": "1080p",
             "audio_only": False,
         }, headers=SESSION_HEADERS)
 
@@ -39,41 +38,38 @@ def test_start_download_enqueues_job(fake_queue, fake_job):
     mock_set.assert_called_once()
 
 
-def test_start_download_passes_correct_args(fake_queue, fake_job):
-    """enqueue should be called with the right kwargs for yt-dlp."""
+def test_start_download_passes_quality_to_job(fake_queue, fake_job):
+    """enqueue should be called with quality (not format) in kwargs."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url"):
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session"):
         client.post("/api/download", json={
             "url": "https://example.com/video",
-            "format": "137+140",
+            "quality": "720p",
             "audio_only": True,
-            "output_template": "%(title)s.%(ext)s",
         }, headers=SESSION_HEADERS)
 
     call_kwargs = fake_queue.enqueue.call_args[1]
     assert call_kwargs["url"] == "https://example.com/video"
-    assert call_kwargs["format_str"] == "137+140"
+    assert call_kwargs["quality"] == "720p"
     assert call_kwargs["audio_only"] is True
-    assert call_kwargs["output_template"] == "%(title)s.%(ext)s"
     assert call_kwargs["session_id"] == "test-session-123"
 
 
 def test_start_download_uses_defaults_for_omitted_fields(fake_queue, fake_job):
-    """Omitted fields should fall back to defaults (format, audio_only)."""
+    """Omitted fields should fall back to defaults (quality='1080p', audio_only=False)."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url"):
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session"):
         client.post("/api/download", json={
             "url": "https://example.com/video",
         }, headers=SESSION_HEADERS)
 
     call_kwargs = fake_queue.enqueue.call_args[1]
-    assert call_kwargs["format_str"] == "bestvideo+bestaudio/best"
+    assert call_kwargs["quality"] == "1080p"
     assert call_kwargs["audio_only"] is False
-    assert call_kwargs["output_template"] is None
 
 
 def test_start_download_invalid_url():
@@ -92,8 +88,8 @@ def test_start_download_sets_job_timeout(fake_queue, fake_job):
     """Job timeout should be 3600s (1 hour)."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url"):
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session"):
         client.post("/api/download", json={"url": "https://example.com/video"}, headers=SESSION_HEADERS)
 
     call_kwargs = fake_queue.enqueue.call_args[1]
@@ -104,8 +100,8 @@ def test_start_download_sets_result_ttl(fake_queue, fake_job):
     """Result TTL should be 86400s (24h)."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url"):
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session"):
         client.post("/api/download", json={"url": "https://example.com/video"}, headers=SESSION_HEADERS)
 
     call_kwargs = fake_queue.enqueue.call_args[1]
@@ -125,50 +121,54 @@ def test_start_download_returns_400_without_session_header(fake_queue, fake_job)
 # --- POST /api/download -- dedup ---
 
 def test_start_download_dedup_returns_existing_job(fake_queue, fake_job):
-    """When dedup finds an active job, should return the existing job_id."""
+    """When dedup finds an active job (same url+quality), should return the existing job_id."""
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value="existing-job-id"), \
+         patch("app.api.download.get_active_job_for_session", return_value="existing-job-id"), \
          patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()):
         # Set status to "queued" so dedup returns the existing job
         fake_job.get_status.return_value = "queued"
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
+            "quality": "1080p",
         }, headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == "existing-job-id"
-
-
-def test_start_download_dedup_returns_already_queued_status(fake_queue, fake_job):
-    """When dedup finds an active (queued) job, status should be 'already_queued'."""
-    with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value="existing-job-id"), \
-         patch("app.api.download.Job.fetch", return_value=fake_job), \
-         patch("app.api.download.get_redis", return_value=MagicMock()):
-        fake_job.get_status.return_value = "queued"
-        response = client.post("/api/download", json={
-            "url": "https://example.com/video",
-        }, headers=SESSION_HEADERS)
-
-    assert response.status_code == 200
-    data = response.json()
     assert data["status"] == "already_queued"
 
 
-def test_start_download_creates_new_job_when_dedup_job_finished(fake_queue, fake_job):
+def test_start_download_dedup_different_quality_new_job(fake_queue, fake_job):
+    """Same URL, different quality -> should create a new job (different dedup field)."""
+    fake_queue.enqueue.return_value = fake_job
+    with patch("app.api.download.get_queue", return_value=fake_queue), \
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session") as mock_set:
+        response = client.post("/api/download", json={
+            "url": "https://example.com/video",
+            "quality": "720p",
+        }, headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    fake_queue.enqueue.assert_called_once()
+    mock_set.assert_called_once_with("test-session-123", "https://example.com/video", "720p", "abc12345")
+
+
+def test_start_download_creates_new_job_after_completion(fake_queue, fake_job):
     """When dedup finds a finished job, should create a new job."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value="old-job-id"), \
+         patch("app.api.download.get_active_job_for_session", return_value="old-job-id"), \
          patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_url") as mock_clear, \
-         patch("app.api.download.set_active_job_for_url") as mock_set:
+         patch("app.api.download.clear_active_job_for_session") as mock_clear, \
+         patch("app.api.download.set_active_job_for_session") as mock_set:
         fake_job.get_status.return_value = "finished"
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
+            "quality": "1080p",
         }, headers=SESSION_HEADERS)
 
     assert response.status_code == 200
@@ -182,39 +182,66 @@ def test_start_download_creates_new_job_when_dedup_job_finished(fake_queue, fake
     mock_set.assert_called_once()
 
 
-def test_start_download_sets_dedup_mapping_after_enqueue(fake_queue, fake_job):
-    """After enqueueing, set_active_job_for_url should be called."""
+def test_start_download_creates_new_job_after_failure(fake_queue, fake_job):
+    """When dedup finds a failed job, should create a new job."""
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
-         patch("app.api.download.get_active_job_for_url", return_value=None), \
-         patch("app.api.download.set_active_job_for_url") as mock_set:
-        client.post("/api/download", json={
+         patch("app.api.download.get_active_job_for_session", return_value="old-job-id"), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session") as mock_clear, \
+         patch("app.api.download.set_active_job_for_session") as mock_set:
+        fake_job.get_status.return_value = "failed"
+        response = client.post("/api/download", json={
             "url": "https://example.com/video",
+            "quality": "1080p",
         }, headers=SESSION_HEADERS)
 
-    mock_set.assert_called_once_with("https://example.com/video", "abc12345")
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    fake_queue.enqueue.assert_called_once()
+    mock_clear.assert_called_once()
+    mock_set.assert_called_once()
+
+
+def test_start_download_sets_dedup_mapping(fake_queue, fake_job):
+    """After enqueueing, set_active_job_for_session should be called with session_id, url, quality."""
+    fake_queue.enqueue.return_value = fake_job
+    with patch("app.api.download.get_queue", return_value=fake_queue), \
+         patch("app.api.download.get_active_job_for_session", return_value=None), \
+         patch("app.api.download.set_active_job_for_session") as mock_set:
+        client.post("/api/download", json={
+            "url": "https://example.com/video",
+            "quality": "720p",
+        }, headers=SESSION_HEADERS)
+
+    mock_set.assert_called_once_with("test-session-123", "https://example.com/video", "720p", "abc12345")
 
 
 # --- GET /api/download/{job_id} ---
 
 def test_get_job_status_success(fake_job):
     """GET /api/download/{job_id} should return job status and metadata."""
+    fake_job.get_status.return_value = "started"  # in-progress to avoid dedup cleanup
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
-         patch("app.api.download.get_redis", return_value=MagicMock()):
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"):
         response = client.get("/api/download/abc12345")
 
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == "abc12345"
-    assert data["status"] == "finished"
+    assert data["status"] == "started"
     assert data["result"]["status"] == "completed"
     assert data["error"] is None
 
 
 def test_get_job_status_includes_timestamps(fake_job):
     """Response should include enqueued_at, started_at, ended_at."""
+    fake_job.get_status.return_value = "started"  # in-progress to avoid dedup cleanup
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
-         patch("app.api.download.get_redis", return_value=MagicMock()):
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"):
         response = client.get("/api/download/abc12345")
 
     data = response.json()
@@ -223,14 +250,14 @@ def test_get_job_status_includes_timestamps(fake_job):
     assert data["ended_at"] is not None
 
 
-def test_get_job_status_not_found():
+def test_get_job_status_returns_404_for_unknown_job():
     """GET /api/download/{job_id} for non-existent job should return 404."""
     with patch("app.api.download.Job.fetch", side_effect=NoSuchJobError), \
          patch("app.api.download.get_redis", return_value=MagicMock()):
         response = client.get("/api/download/nonexistent")
 
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+    assert "not found" in response.json()["detail"].lower()
 
 
 def test_get_job_status_failed_job():
@@ -238,7 +265,11 @@ def test_get_job_status_failed_job():
     fake_job = MagicMock()
     fake_job.id = "failed123"
     fake_job.get_status.return_value = "failed"
-    fake_job.kwargs = {"url": "https://example.com/video", "session_id": "test-session-123"}
+    fake_job.kwargs = {
+        "url": "https://example.com/video",
+        "quality": "1080p",
+        "session_id": "test-session-123",
+    }
     fake_job.result = None
     fake_job.exc_info = "ValueError: Bad URL"
     fake_job.enqueued_at = datetime(2025, 1, 1, 12, 0, 0)
@@ -246,7 +277,8 @@ def test_get_job_status_failed_job():
     fake_job.ended_at = datetime(2025, 1, 1, 12, 0, 10)
 
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
-         patch("app.api.download.get_redis", return_value=MagicMock()):
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"):
         response = client.get("/api/download/failed123")
 
     assert response.status_code == 200
@@ -258,23 +290,27 @@ def test_get_job_status_failed_job():
 # --- GET /api/download/{job_id} -- dedup cleanup ---
 
 def test_get_job_status_clears_dedup_on_completion(fake_job):
-    """Finished job should clear the dedup mapping."""
+    """Finished job should clear the dedup mapping with session_id, url, quality."""
     fake_job.get_status.return_value = "finished"
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_url") as mock_clear:
+         patch("app.api.download.clear_active_job_for_session") as mock_clear:
         response = client.get("/api/download/abc12345")
 
     assert response.status_code == 200
-    mock_clear.assert_called_once_with("https://example.com/video")
+    mock_clear.assert_called_once_with("test-session-123", "https://example.com/video", "1080p")
 
 
 def test_get_job_status_clears_dedup_on_failure():
-    """Failed job should clear the dedup mapping."""
+    """Failed job should clear the dedup mapping with session_id, url, quality."""
     fake_job = MagicMock()
     fake_job.id = "failed123"
     fake_job.get_status.return_value = "failed"
-    fake_job.kwargs = {"url": "https://example.com/badvideo", "session_id": "test-session-123"}
+    fake_job.kwargs = {
+        "url": "https://example.com/badvideo",
+        "quality": "720p",
+        "session_id": "test-session-123",
+    }
     fake_job.result = None
     fake_job.exc_info = "ValueError: Bad URL"
     fake_job.enqueued_at = datetime(2025, 1, 1, 12, 0, 0)
@@ -283,11 +319,11 @@ def test_get_job_status_clears_dedup_on_failure():
 
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_url") as mock_clear:
+         patch("app.api.download.clear_active_job_for_session") as mock_clear:
         response = client.get("/api/download/failed123")
 
     assert response.status_code == 200
-    mock_clear.assert_called_once_with("https://example.com/badvideo")
+    mock_clear.assert_called_once_with("test-session-123", "https://example.com/badvideo", "720p")
 
 
 def test_get_job_status_does_not_clear_dedup_while_in_progress():
@@ -295,7 +331,11 @@ def test_get_job_status_does_not_clear_dedup_while_in_progress():
     fake_job = MagicMock()
     fake_job.id = "inprogress123"
     fake_job.get_status.return_value = "started"
-    fake_job.kwargs = {"url": "https://example.com/video", "session_id": "test-session-123"}
+    fake_job.kwargs = {
+        "url": "https://example.com/video",
+        "quality": "1080p",
+        "session_id": "test-session-123",
+    }
     fake_job.result = None
     fake_job.exc_info = None
     fake_job.enqueued_at = datetime(2025, 1, 1, 12, 0, 0)
@@ -304,7 +344,7 @@ def test_get_job_status_does_not_clear_dedup_while_in_progress():
 
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_url") as mock_clear:
+         patch("app.api.download.clear_active_job_for_session") as mock_clear:
         response = client.get("/api/download/inprogress123")
 
     assert response.status_code == 200

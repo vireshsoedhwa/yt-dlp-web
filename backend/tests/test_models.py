@@ -56,11 +56,10 @@ def test_info_response_full():
 # --- DownloadRequest ---
 
 def test_download_request_defaults():
-    """DownloadRequest should set defaults for format and audio_only."""
+    """DownloadRequest should set defaults for quality and audio_only."""
     req = DownloadRequest(url="https://example.com/video")
-    assert req.format == "bestvideo+bestaudio/best"
+    assert req.quality == "1080p"
     assert req.audio_only is False
-    assert req.output_template is None
 
 
 def test_download_request_audio_only():
@@ -68,17 +67,9 @@ def test_download_request_audio_only():
     assert req.audio_only is True
 
 
-def test_download_request_custom_format():
-    req = DownloadRequest(url="https://example.com/video", format="137+140")
-    assert req.format == "137+140"
-
-
-def test_download_request_custom_output_template():
-    req = DownloadRequest(
-        url="https://example.com/video",
-        output_template="%(uploader)s/%(title)s.%(ext)s",
-    )
-    assert req.output_template == "%(uploader)s/%(title)s.%(ext)s"
+def test_download_request_custom_quality():
+    req = DownloadRequest(url="https://example.com/video", quality="720p")
+    assert req.quality == "720p"
 
 
 def test_download_request_rejects_non_url():

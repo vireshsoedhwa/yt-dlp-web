@@ -5,14 +5,13 @@ from pydantic import BaseModel, HttpUrl
 
 class DownloadRequest(BaseModel):
     url: HttpUrl
-    format: str = "bestvideo+bestaudio/best"
+    quality: str = "1080p"  # "1080p", "720p", "480p", "360p", "audio"
     audio_only: bool = False
-    output_template: str | None = None  # override default naming
 
 
 class DownloadResponse(BaseModel):
     job_id: str
-    status: str  # "queued", "downloading", "completed", "failed"
+    status: str  # "queued", "already_queued", "completed", "failed"
     message: str
 
 

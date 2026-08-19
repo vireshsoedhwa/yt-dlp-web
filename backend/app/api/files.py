@@ -2,15 +2,15 @@
 File serving endpoint — serve downloaded files to the user with session isolation.
 
 GET  /api/files              — list files for the current session
-GET  /api/files/{filename}   — download a file (serve-then-delete via hard link)
+GET  /api/files/{filename}   — download a file (serve-then-delete)
 POST /api/purge              — delete old files for the current session
 GET  /api/purge/preview      — preview what would be purged
 
 Security:
-- Filenames are sanitized to prevent path traversal (no /, \, ..)
+- Filenames are sanitized to prevent path traversal (no /, \\, ..)
 - Session ID is required (X-Session-ID header)
 - Files are only served to the session that owns them
-- Hard links isolate sessions — deleting one session's file doesn't affect others
+- Each session has its own directory — fully isolated
 """
 
 import os
@@ -19,26 +19,20 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from fastapi.responses import FileResponse
 
-from app.core.config import DOWNLOAD_DIR, PURGE_MAX_AGE_HOURS
+from app.core.config import PURGE_MAX_AGE_HOURS
 from app.core.queue import (
     get_files_for_session,
     clear_file_for_session,
-    clear_active_job_for_url,
 )
 from app.core.files_service import (
     get_session_file_path,
-    create_session_link,
+    get_session_dir,
     delete_session_file,
     file_exists_for_session,
     get_file_size,
-    get_original_path,
 )
-from app.core.yt_dlp_service import parse_video_id, remove_from_archive
 
 router = APIRouter()
-
-# Files to skip during purge (never delete these)
-_SKIP_FILES = {".ytdlp-archive.txt", ".gitkeep"}
 
 
 def _safe_filename(filename: str) -> str:
@@ -89,7 +83,7 @@ def download_file(
     background_tasks: Annotated[BackgroundTasks, BackgroundTasks()],
     x_session_id: str | None = Header(None),
 ):
-    """Download a file. The session's hard link is deleted after serving."""
+    """Download a file. The file is deleted from the session directory after serving."""
     session_id = _require_session(x_session_id)
     basename = _safe_filename(filename)
 
@@ -98,27 +92,16 @@ def download_file(
     if not file_belongs_to_session(session_id, basename):
         raise HTTPException(status_code=403, detail="File does not belong to this session")
 
-    # If the session doesn't have a hard link yet but the original exists,
-    # create one on the fly (handles dedup: second session downloading same video)
-    if not file_exists_for_session(session_id, basename):
-        link_path = create_session_link(session_id, basename)
-        if link_path is None:
-            # Original file was already deleted by another session's cleanup
-            raise HTTPException(status_code=404, detail="File no longer available, please re-download")
-        # Register the file to this session
-        from app.core.queue import register_file_for_session
-        register_file_for_session(session_id, basename)
-
     session_path = get_session_file_path(session_id, basename)
     if not os.path.isfile(session_path):
         raise HTTPException(status_code=404, detail="File not found")
 
     # Schedule cleanup after the response is sent.
-    # The background task deletes the session's hard link. If that was the
-    # last link (st_nlink == 1 after removal), the original file is also
-    # deleted and the archive entry is removed.
+    # The background task deletes the file from the session directory
+    # and clears the Redis mapping. If the session directory ends up empty,
+    # it is removed automatically.
     def _cleanup():
-        result = delete_session_file(session_id, basename)
+        delete_session_file(session_id, basename)
         clear_file_for_session(session_id, basename)
 
     background_tasks.add_task(_cleanup)
@@ -156,9 +139,8 @@ def _purge_old_files(session_id: str, max_age_hours: int, delete: bool) -> dict:
     """
     Core purge logic shared by purge and preview endpoints.
 
-    Purges:
-    1. Session files (hard links) older than max_age_hours
-    2. Orphaned original files (st_nlink == 1, no session links) older than max_age_hours
+    Scans the session's directory for files older than max_age_hours.
+    No orphaned original scanning — each session is self-contained.
 
     Returns: {"purged": [...], "skipped": N, "freed_bytes": N}
     """
@@ -169,14 +151,13 @@ def _purge_old_files(session_id: str, max_age_hours: int, delete: bool) -> dict:
     freed_bytes = 0
     skipped = 0
 
-    # 1. Purge session files
+    session_dir = get_session_dir(session_id)
+    if not os.path.isdir(session_dir):
+        return {"purged": [], "skipped": 0, "freed_bytes": 0}
+
     filenames = get_files_for_session(session_id)
     for name in filenames:
-        try:
-            session_path = get_session_file_path(session_id, name)
-        except ValueError:
-            skipped += 1
-            continue
+        session_path = get_session_file_path(session_id, name)
 
         if not os.path.isfile(session_path):
             # File already gone -- just clean up the Redis mapping
@@ -193,57 +174,18 @@ def _purge_old_files(session_id: str, max_age_hours: int, delete: bool) -> dict:
             continue
 
         size = os.path.getsize(session_path)
-        video_id = parse_video_id(name)
 
         if delete:
-            result = delete_session_file(session_id, name)
+            delete_session_file(session_id, name)
             clear_file_for_session(session_id, name)
             freed_bytes += size
 
         purged.append({
             "filename": name,
-            "video_id": video_id,
             "size_bytes": size,
             "size_mb": round(size / (1024 * 1024), 2),
             "age_hours": round(age_seconds / 3600, 2),
         })
-
-    # 2. Purge orphaned originals (no session links, old)
-    if delete and os.path.isdir(DOWNLOAD_DIR):
-        for name in os.listdir(DOWNLOAD_DIR):
-            # Skip hidden files, archive, gitkeep, session dir
-            if name.startswith(".") or name in _SKIP_FILES:
-                continue
-
-            filepath = os.path.join(DOWNLOAD_DIR, name)
-            if not os.path.isfile(filepath):
-                continue
-
-            file_mtime = os.path.getmtime(filepath)
-            age_seconds = now - file_mtime
-
-            if age_seconds < max_age_seconds:
-                continue
-
-            # Check if orphaned (only 1 link = the original itself)
-            stat = os.stat(filepath)
-            if stat.st_nlink <= 1:
-                size = os.path.getsize(filepath)
-                video_id = parse_video_id(name)
-
-                os.remove(filepath)
-                if video_id:
-                    remove_from_archive(video_id)
-                freed_bytes += size
-
-                purged.append({
-                    "filename": name,
-                    "video_id": video_id,
-                    "size_bytes": size,
-                    "size_mb": round(size / (1024 * 1024), 2),
-                    "age_hours": round(age_seconds / 3600, 2),
-                    "orphaned": True,
-                })
 
     return {
         "purged": purged,

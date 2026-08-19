@@ -17,9 +17,8 @@ export interface VideoInfo {
 
 export interface DownloadRequest {
   url: string;
-  format?: string;
+  quality?: string;
   audio_only?: boolean;
-  output_template?: string | null;
 }
 
 export interface DownloadResponse {

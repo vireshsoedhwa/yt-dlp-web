@@ -1,19 +1,16 @@
 """
-File service -- manages per-session hard links to downloaded files.
+File service -- manages per-session download files.
 
-When yt-dlp downloads a video, the original file lands in DOWNLOAD_DIR.
-This module creates hard links in a per-session subdirectory so that:
-- Each session has its own file handle (isolation)
-- Multiple sessions sharing the same video each get their own link
-- Deleting one session's link does NOT delete the underlying data
-- The original is only deleted when the last link is removed (st_nlink == 1)
-- The filesystem handles reference counting automatically via inode link counts
+Each session has its own directory under SESSION_DIR. yt-dlp downloads
+directly into the session directory — no shared originals, no hard links.
+When the user downloads a file, it is served from the session directory
+and then deleted. Empty session directories are cleaned up automatically.
 """
 
 import os
 import shutil
 
-from app.core.config import DOWNLOAD_DIR, SESSION_DIR
+from app.core.config import SESSION_DIR
 
 
 def _validate_session_id(session_id: str) -> None:
@@ -36,7 +33,7 @@ def get_session_dir(session_id: str) -> str:
 
 
 def get_session_file_path(session_id: str, filename: str) -> str:
-    """Return the full path to a session-specific hard link."""
+    """Return the full path to a file in the session's directory."""
     _validate_session_id(session_id)
 
     # Sanitize filename (same protection as files API)
@@ -48,97 +45,44 @@ def get_session_file_path(session_id: str, filename: str) -> str:
     return os.path.join(SESSION_DIR, session_id, os.path.basename(filename))
 
 
-def get_original_path(filename: str) -> str:
-    """Return the path to the original downloaded file in DOWNLOAD_DIR."""
-    basename = os.path.basename(filename)
-    if "/" in basename or "\\" in basename or ".." in basename:
-        raise ValueError("Invalid filename")
-    return os.path.join(DOWNLOAD_DIR, basename)
-
-
-def create_session_link(session_id: str, filename: str) -> str | None:
-    """
-    Create a hard link from the original file to a session-specific path.
-
-    Returns the session file path on success, None if the original file
-    doesn't exist (already deleted by another session's cleanup).
-    """
-    original = get_original_path(filename)
-
-    # If the original doesn't exist, we can't create a link
-    if not os.path.isfile(original):
-        return None
-
-    session_path = get_session_file_path(session_id, filename)
-
-    # Create session directory if needed
-    session_dir = os.path.dirname(session_path)
-    os.makedirs(session_dir, exist_ok=True)
-
-    # Create hard link (overwrite if already exists)
-    if os.path.exists(session_path):
-        os.remove(session_path)
-    os.link(original, session_path)
-
-    return session_path
-
-
 def delete_session_file(session_id: str, filename: str) -> dict:
     """
-    Delete a session's hard link and potentially the original file.
+    Delete a file from the session's directory.
 
-    After deleting the session link, checks the original file's link count.
-    If st_nlink == 1 (only the original remains, no other session links),
-    the original is also deleted and the video ID is removed from the archive.
+    After deletion, if the session directory is empty, it is removed.
 
     Returns:
-        {"deleted": filename, "original_removed": bool, "video_id": str | None}
+        {"deleted": filename, "session_dir_empty": bool}
     """
-    from app.core.yt_dlp_service import parse_video_id, remove_from_archive
+    _validate_session_id(session_id)
 
-    session_path = get_session_file_path(session_id, filename)
-    original = get_original_path(filename)
+    file_path = get_session_file_path(session_id, filename)
+    deleted = False
 
-    deleted_session_link = False
-
-    # Delete the session's hard link
-    if os.path.exists(session_path):
-        os.remove(session_path)
-        deleted_session_link = True
-
-    # Check if the original should also be deleted
-    original_removed = False
-    video_id = parse_video_id(filename)
-
-    if os.path.isfile(original):
-        stat = os.stat(original)
-        # st_nlink counts all hard links including the original itself.
-        # If st_nlink == 1, only the original file entry remains (no session links).
-        if stat.st_nlink <= 1:
-            os.remove(original)
-            original_removed = True
-            if video_id:
-                remove_from_archive(video_id)
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        deleted = True
 
     # Clean up empty session directory
-    session_dir = os.path.dirname(session_path)
+    session_dir = get_session_dir(session_id)
+    session_dir_empty = False
     if os.path.isdir(session_dir):
         try:
             if not os.listdir(session_dir):
                 os.rmdir(session_dir)
+                session_dir_empty = True
         except OSError:
             pass  # Directory not empty or other error -- ignore
 
     return {
         "deleted": filename,
-        "original_removed": original_removed,
-        "video_id": video_id,
-        "session_link_deleted": deleted_session_link,
+        "session_dir_empty": session_dir_empty,
+        "file_was_deleted": deleted,
     }
 
 
 def file_exists_for_session(session_id: str, filename: str) -> bool:
-    """Check if a session-specific hard link exists on disk."""
+    """Check if a file exists in the session's directory."""
     try:
         path = get_session_file_path(session_id, filename)
         return os.path.isfile(path)
@@ -159,7 +103,7 @@ def get_file_size(session_id: str, filename: str) -> int | None:
 
 def cleanup_session_dir(session_id: str) -> None:
     """
-    Remove a session's entire directory and all its hard links.
+    Remove a session's entire directory and all its files.
     Called during purge or session cleanup.
     """
     _validate_session_id(session_id)

@@ -68,7 +68,7 @@ export function App() {
 
         const res = await startDownload({
           url: currentUrl,
-          format: opts.format,
+          quality: opts.quality,
           audio_only: opts.audio_only,
         });
         // Avoid duplicate job cards when backend returns an already-queued job

@@ -1,11 +1,12 @@
 """
-Download endpoint — enqueue jobs via RQ with dedup and session support.
+Download endpoint — enqueue jobs via RQ with session-scoped dedup.
 
 The API enqueues a download job and returns immediately with a job_id.
 The RQ worker (separate container) picks up the job and runs the download.
 
 Features:
-- Dedup: if an active job for the same URL exists, return its job_id
+- Session-scoped dedup: if an active job for the same URL+quality exists
+  in the same session, return its job_id instead of creating a duplicate
 - Session: X-Session-ID header associates files with the requesting browser
 - Cleanup: polling a finished/failed job clears the dedup mapping
 """
@@ -18,9 +19,9 @@ from app.models.schemas import DownloadRequest, DownloadResponse
 from app.core.queue import (
     get_queue,
     get_redis,
-    get_active_job_for_url,
-    set_active_job_for_url,
-    clear_active_job_for_url,
+    get_active_job_for_session,
+    set_active_job_for_session,
+    clear_active_job_for_session,
 )
 from app.core.yt_dlp_service import download_video
 
@@ -34,13 +35,14 @@ def start_download(
 ):
     """Enqueue a download job. Returns immediately with a job_id."""
     url = str(req.url)
+    quality = req.quality
 
     # Session ID is required for file isolation
     if not x_session_id:
         raise HTTPException(status_code=400, detail="X-Session-ID header required")
 
-    # Dedup check: is there already an active job for this URL?
-    existing_job_id = get_active_job_for_url(url)
+    # Dedup check: is there already an active job for this URL+quality in this session?
+    existing_job_id = get_active_job_for_session(x_session_id, url, quality)
     if existing_job_id:
         try:
             existing_job = Job.fetch(existing_job_id, connection=get_redis())
@@ -53,26 +55,25 @@ def start_download(
                     message="Download job already in progress.",
                 )
             # Job is finished or failed -- clear mapping and proceed
-            clear_active_job_for_url(url)
+            clear_active_job_for_session(x_session_id, url, quality)
         except NoSuchJobError:
             # Job was deleted from Redis -- clear mapping and proceed
-            clear_active_job_for_url(url)
+            clear_active_job_for_session(x_session_id, url, quality)
 
     # Enqueue new job
     queue = get_queue()
     job = queue.enqueue(
         download_video,
         url=url,
-        format_str=req.format,
+        quality=quality,
         audio_only=req.audio_only,
-        output_template=req.output_template,
         session_id=x_session_id,
         job_timeout=3600,  # 1 hour max per download
         result_ttl=86400,  # keep result for 24h
     )
 
     # Set dedup mapping
-    set_active_job_for_url(url, job.id)
+    set_active_job_for_session(x_session_id, url, quality, job.id)
 
     return DownloadResponse(
         job_id=job.id,
@@ -93,10 +94,12 @@ def get_job_status(job_id: str):
 
     # Clean up dedup mapping when job reaches terminal state
     if status in ("finished", "failed"):
-        # Get URL from job kwargs
+        # Get URL and quality from job kwargs
         job_url = job.kwargs.get("url") if job.kwargs else None
-        if job_url:
-            clear_active_job_for_url(job_url)
+        job_quality = job.kwargs.get("quality") if job.kwargs else None
+        job_session = job.kwargs.get("session_id") if job.kwargs else None
+        if job_url and job_quality and job_session:
+            clear_active_job_for_session(job_session, job_url, job_quality)
 
     return {
         "job_id": job.id,

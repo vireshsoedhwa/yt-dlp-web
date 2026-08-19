@@ -10,8 +10,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from app.core.queue import _redis_conn
-
 
 @pytest.fixture(autouse=True)
 def reset_redis_singleton():
@@ -47,12 +45,18 @@ def fake_job():
     job = MagicMock()
     job.id = "abc12345"
     job.get_status.return_value = "finished"
-    job.kwargs = {"url": "https://example.com/video", "session_id": "test-session-123"}
+    job.kwargs = {
+        "url": "https://example.com/video",
+        "quality": "1080p",
+        "audio_only": False,
+        "session_id": "test-session-123",
+    }
     job.result = {
         "status": "completed",
         "url": "https://example.com/video",
-        "format": "best",
-        "files": ["Test Video [abc123].mp4"],
+        "quality": "1080p",
+        "format": "bestvideo[height<=1080]+bestaudio/best",
+        "files": ["Test Video [abc123]_1080p.mp4"],
         "session_id": "test-session-123",
     }
     job.exc_info = None
@@ -85,7 +89,7 @@ def fake_session_id():
 
 @pytest.fixture
 def temp_downloads_dir():
-    """Create a temp directory with .session/ subdirectory, patch DOWNLOAD_DIR and SESSION_DIR.
+    """Create a temp directory with .session/ subdirectory, patch config and services.
 
     Yields the path to the temp downloads directory.
     Cleans up after the test.
@@ -96,10 +100,8 @@ def temp_downloads_dir():
 
     with patch("app.core.config.DOWNLOAD_DIR", tmpdir) as _cfg_dd, \
          patch("app.core.config.SESSION_DIR", session_dir) as _cfg_sd, \
-         patch("app.core.files_service.DOWNLOAD_DIR", tmpdir) as _fs_dd, \
          patch("app.core.files_service.SESSION_DIR", session_dir) as _fs_sd, \
-         patch("app.core.yt_dlp_service.DOWNLOAD_DIR", tmpdir) as _yd_dd, \
-         patch("app.api.files.DOWNLOAD_DIR", tmpdir) as _api_dd:
+         patch("app.core.yt_dlp_service.SESSION_DIR", session_dir) as _yd_sd:
         yield tmpdir
 
     # Cleanup

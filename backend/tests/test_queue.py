@@ -1,6 +1,6 @@
 """
 Tests for app.core.queue — Redis connection, Queue helpers,
-dedup helpers, and session-to-file mapping helpers.
+session-scoped dedup helpers, and session-to-file mapping helpers.
 
 Mocks Redis and RQ Queue so no Redis server is needed.
 """
@@ -62,64 +62,92 @@ def test_get_queue_reuses_redis_connection():
     assert queue_kwargs["connection"] is conn
 
 
-# --- Dedup helpers (URL-to-job mapping) ---
+# --- Session-scoped dedup (URL+quality per session) ---
 
-def test_url_hash_is_deterministic():
-    """_url_hash should return the same hash for the same URL."""
-    from app.core.queue import _url_hash
-    h1 = _url_hash("https://example.com/video")
-    h2 = _url_hash("https://example.com/video")
-    assert h1 == h2
-
-
-def test_url_hash_is_different_for_different_urls():
-    """_url_hash should return different hashes for different URLs."""
-    from app.core.queue import _url_hash
-    h1 = _url_hash("https://example.com/video1")
-    h2 = _url_hash("https://example.com/video2")
-    assert h1 != h2
-
-
-def test_get_active_job_for_url_returns_none_when_empty(fake_redis):
-    """get_active_job_for_url should return None when no mapping exists."""
-    fake_redis.get.return_value = None
-    from app.core.queue import get_active_job_for_url
-    result = get_active_job_for_url("https://example.com/video")
+def test_get_active_job_for_session_returns_none_when_empty(fake_redis):
+    """get_active_job_for_session should return None when no mapping exists."""
+    fake_redis.hget.return_value = None
+    from app.core.queue import get_active_job_for_session
+    result = get_active_job_for_session("session-123", "https://example.com/video", "1080p")
     assert result is None
-    fake_redis.get.assert_called_once()
+    fake_redis.hget.assert_called_once()
 
 
-def test_set_then_get_active_job_for_url(fake_redis):
-    """set_active_job_for_url then get_active_job_for_url should return the job_id."""
-    fake_redis.setex.return_value = True
-    fake_redis.get.return_value = b"job-123"
+def test_set_then_get_active_job_for_session(fake_redis):
+    """set_active_job_for_session then get_active_job_for_session should return the job_id."""
+    fake_redis.hget.return_value = b"job-123"
 
-    from app.core.queue import set_active_job_for_url, get_active_job_for_url
+    from app.core.queue import set_active_job_for_session, get_active_job_for_session
 
-    set_active_job_for_url("https://example.com/video", "job-123")
-    result = get_active_job_for_url("https://example.com/video")
+    set_active_job_for_session("session-123", "https://example.com/video", "1080p", "job-123")
+    result = get_active_job_for_session("session-123", "https://example.com/video", "1080p")
 
     assert result == "job-123"
+    fake_redis.hset.assert_called_once()
+    fake_redis.hget.assert_called_once()
 
 
-def test_clear_active_job_for_url(fake_redis):
-    """clear_active_job_for_url should call redis.delete."""
-    fake_redis.delete.return_value = 1
-    from app.core.queue import clear_active_job_for_url
-    clear_active_job_for_url("https://example.com/video")
+def test_clear_active_job_for_session(fake_redis):
+    """clear_active_job_for_session should call redis.hdel."""
+    from app.core.queue import clear_active_job_for_session
+    clear_active_job_for_session("session-123", "https://example.com/video", "1080p")
+    fake_redis.hdel.assert_called_once()
+
+
+def test_clear_all_dedup_for_session(fake_redis):
+    """clear_all_dedup_for_session should call redis.delete with the dedup key."""
+    from app.core.queue import clear_all_dedup_for_session
+    clear_all_dedup_for_session("session-123")
     fake_redis.delete.assert_called_once()
 
 
-def test_set_active_job_for_url_sets_ttl(fake_redis):
-    """set_active_job_for_url should call setex with TTL."""
-    from app.core.queue import set_active_job_for_url
-    set_active_job_for_url("https://example.com/video", "job-123")
+def test_dedup_different_quality_different_fields(fake_redis):
+    """Same URL with different quality should use different HGET fields."""
+    from app.core.queue import set_active_job_for_session, _dedup_field
 
-    fake_redis.setex.assert_called_once()
-    args = fake_redis.setex.call_args[0]
-    # args: (key, ttl, value)
-    assert args[1] == 3600  # DEDUP_TTL_SECONDS default
-    assert args[2] == "job-123"
+    set_active_job_for_session("session-123", "https://example.com/video", "1080p", "job-1")
+    set_active_job_for_session("session-123", "https://example.com/video", "720p", "job-2")
+
+    # Two hset calls, each with different field names
+    assert fake_redis.hset.call_count == 2
+    field1 = fake_redis.hset.call_args_list[0][0][1]
+    field2 = fake_redis.hset.call_args_list[1][0][1]
+    assert field1 != field2
+    assert "1080p" in field1
+    assert "720p" in field2
+
+
+def test_dedup_different_session_different_keys(fake_redis):
+    """Same URL+quality, different session should use different Redis keys."""
+    from app.core.queue import set_active_job_for_session
+
+    set_active_job_for_session("session-1", "https://example.com/video", "1080p", "job-1")
+    set_active_job_for_session("session-2", "https://example.com/video", "1080p", "job-2")
+
+    # Two hset calls, each with different key names
+    assert fake_redis.hset.call_count == 2
+    key1 = fake_redis.hset.call_args_list[0][0][0]
+    key2 = fake_redis.hset.call_args_list[1][0][0]
+    assert key1 != key2
+    assert "session-1" in key1
+    assert "session-2" in key2
+
+
+def test_get_active_job_for_session_decodes_bytes(fake_redis):
+    """get_active_job_for_session should decode bytes result to str."""
+    fake_redis.hget.return_value = b"job-456"
+    from app.core.queue import get_active_job_for_session
+    result = get_active_job_for_session("session-123", "https://example.com/video", "1080p")
+    assert result == "job-456"
+    assert isinstance(result, str)
+
+
+def test_get_active_job_for_session_handles_string(fake_redis):
+    """get_active_job_for_session should handle string result (already decoded)."""
+    fake_redis.hget.return_value = "job-789"
+    from app.core.queue import get_active_job_for_session
+    result = get_active_job_for_session("session-123", "https://example.com/video", "1080p")
+    assert result == "job-789"
 
 
 # --- Session-to-file mapping (Redis SETs) ---

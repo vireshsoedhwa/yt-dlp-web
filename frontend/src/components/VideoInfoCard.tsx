@@ -9,7 +9,7 @@ import { useState, useRef, useEffect } from "react";
 import type { VideoInfo } from "../types";
 
 export interface DownloadOptions {
-  format: string;
+  quality: string;
   audio_only: boolean;
 }
 
@@ -24,8 +24,8 @@ export function VideoInfoCard({
   onDownload,
   downloading = false,
 }: VideoInfoCardProps) {
-  const [audioOnly, setAudioOnly] = useState(false);
-  const [formatStr, setFormatStr] = useState("bestvideo+bestaudio/best");
+  const [quality, setQuality] = useState("1080p");
+  const isAudio = quality === "audio";
 
   // Ref guard prevents double-clicks from firing onDownload twice
   // before React re-renders with the `clicked` state or `downloading` prop.
@@ -47,8 +47,8 @@ export function VideoInfoCard({
     clickLock.current = true;
     setClicked(true);
     onDownload({
-      format: audioOnly ? "bestaudio/best" : formatStr,
-      audio_only: audioOnly,
+      quality,
+      audio_only: isAudio,
     });
   }
 
@@ -82,25 +82,44 @@ export function VideoInfoCard({
 
         {/* Download controls */}
         <div className="space-y-3 border-t border-slate-700 pt-4">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
-            <input
-              type="checkbox"
-              checked={audioOnly}
-              onChange={(e) => setAudioOnly(e.target.checked)}
-              className="accent-blue-500"
-            />
-            Audio only
-          </label>
-
-          {!audioOnly && (
-            <input
-              type="text"
-              value={formatStr}
-              onChange={(e) => setFormatStr(e.target.value)}
-              placeholder="Format (e.g. bestvideo+bestaudio/best)"
-              className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-slate-100 text-sm focus:outline-none focus:border-blue-500"
-            />
+          {/* Quality pills — video resolutions hidden when Audio is selected */}
+          {!isAudio && (
+            <div className="flex flex-wrap gap-2">
+              {(["1080p", "720p", "480p", "360p"] as const).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setQuality(q)}
+                  className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                  style={
+                    quality === q
+                      ? { backgroundColor: "#16a34a", color: "#ffffff" }
+                      : { backgroundColor: "#334155", color: "#cbd5e1" }
+                  }
+                  aria-pressed={quality === q}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           )}
+
+          {/* Audio only pill — separate; selecting it hides video quality pills */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setQuality("audio")}
+              className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+              style={
+                isAudio
+                  ? { backgroundColor: "#16a34a", color: "#ffffff" }
+                  : { backgroundColor: "#334155", color: "#cbd5e1" }
+              }
+              aria-pressed={isAudio}
+            >
+              Audio only
+            </button>
+          </div>
 
           <button
             onClick={handleDownload}

@@ -112,7 +112,7 @@ describe("startDownload", () => {
 
     const result = await startDownload({
       url: "https://example.com/video",
-      format: "bestvideo+bestaudio/best",
+      quality: "1080p",
       audio_only: false,
     });
 
@@ -137,7 +137,7 @@ describe("startDownload", () => {
     }
   });
 
-  it("should send audio_only and format in the body", async () => {
+  it("should send audio_only and quality in the body", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -146,13 +146,13 @@ describe("startDownload", () => {
 
     await startDownload({
       url: "https://example.com/video",
-      format: "bestaudio/best",
+      quality: "audio",
       audio_only: true,
     });
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.audio_only).toBe(true);
-    expect(body.format).toBe("bestaudio/best");
+    expect(body.quality).toBe("audio");
   });
 });
 

@@ -1,8 +1,8 @@
 /**
  * Tests for VideoInfoCard component and formatDuration helper.
  *
- * Tests: rendering metadata, audio-only toggle, format input, download callback,
- * formatDuration edge cases.
+ * Tests: rendering metadata, quality pills, audio pill, download callback,
+ * click lock, spinner/disabled, formatDuration edge cases.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -43,7 +43,7 @@ describe("formatDuration", () => {
   });
 });
 
-describe("VideoInfoCard", () => {
+describe("VideoInfoCard metadata", () => {
   it("should display the video title", () => {
     render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
     expect(screen.getByText("Test Video")).toBeInTheDocument();
@@ -76,59 +76,6 @@ describe("VideoInfoCard", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
-  it("should call onDownload with video format when Download clicked", async () => {
-    const onDownload = vi.fn();
-    const user = userEvent.setup();
-    render(<VideoInfoCard info={mockInfo} onDownload={onDownload} />);
-
-    await user.click(screen.getByRole("button", { name: /download/i }));
-
-    expect(onDownload).toHaveBeenCalledWith({
-      format: "bestvideo+bestaudio/best",
-      audio_only: false,
-    });
-  });
-
-  it("should call onDownload with audio format when audio-only is checked", async () => {
-    const onDownload = vi.fn();
-    const user = userEvent.setup();
-    render(<VideoInfoCard info={mockInfo} onDownload={onDownload} />);
-
-    await user.click(screen.getByLabelText(/audio only/i));
-    await user.click(screen.getByRole("button", { name: /download/i }));
-
-    expect(onDownload).toHaveBeenCalledWith({
-      format: "bestaudio/best",
-      audio_only: true,
-    });
-  });
-
-  it("should hide format input when audio-only is checked", async () => {
-    const user = userEvent.setup();
-    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
-
-    // Format input visible initially
-    expect(
-      screen.getByPlaceholderText(/bestvideo\+bestaudio/i),
-    ).toBeInTheDocument();
-
-    // Check audio-only
-    await user.click(screen.getByLabelText(/audio only/i));
-
-    // Format input should be gone
-    expect(
-      screen.queryByPlaceholderText(/bestvideo\+bestaudio/i),
-    ).not.toBeInTheDocument();
-  });
-
-  it("should show 'Downloading...' with spinner and be disabled when downloading=true", () => {
-    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} downloading />);
-    const button = screen.getByRole("button", { name: /downloading/i });
-    expect(button).toBeDisabled();
-    // Spinner SVG is present
-    expect(button.querySelector("svg")).toBeInTheDocument();
-  });
-
   it("should not render uploader when null", () => {
     const noUploader = { ...mockInfo, uploader: null };
     render(<VideoInfoCard info={noUploader} onDownload={vi.fn()} />);
@@ -139,6 +86,80 @@ describe("VideoInfoCard", () => {
     const noDuration = { ...mockInfo, duration: null };
     render(<VideoInfoCard info={noDuration} onDownload={vi.fn()} />);
     expect(screen.queryByText(/Duration:/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("VideoInfoCard quality pills", () => {
+  it("test_quality_pills_render — should render all 5 pills (1080p, 720p, 480p, 360p, Audio)", () => {
+    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
+    // Video quality pills
+    expect(screen.getByText("1080p")).toBeInTheDocument();
+    expect(screen.getByText("720p")).toBeInTheDocument();
+    expect(screen.getByText("480p")).toBeInTheDocument();
+    expect(screen.getByText("360p")).toBeInTheDocument();
+    // Audio only pill
+    expect(screen.getByText("Audio only")).toBeInTheDocument();
+  });
+
+  it("test_default_quality_is_1080p — 1080p pill is selected by default", () => {
+    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
+    const pill1080 = screen.getByText("1080p");
+    expect(pill1080).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("test_quality_pill_selection — clicking 720p selects it, Download sends quality: '720p'", async () => {
+    const onDownload = vi.fn();
+    const user = userEvent.setup();
+    render(<VideoInfoCard info={mockInfo} onDownload={onDownload} />);
+
+    await user.click(screen.getByText("720p"));
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    expect(onDownload).toHaveBeenCalledWith({
+      quality: "720p",
+      audio_only: false,
+    });
+  });
+
+  it("test_audio_pill_hides_video_pills — clicking Audio hides video quality pills", async () => {
+    const user = userEvent.setup();
+    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
+
+    // Video pills visible initially
+    expect(screen.getByText("1080p")).toBeInTheDocument();
+
+    // Click Audio pill
+    await user.click(screen.getByText("Audio only"));
+
+    // Video pills should be gone
+    expect(screen.queryByText("1080p")).not.toBeInTheDocument();
+    expect(screen.queryByText("720p")).not.toBeInTheDocument();
+    expect(screen.queryByText("480p")).not.toBeInTheDocument();
+    expect(screen.queryByText("360p")).not.toBeInTheDocument();
+  });
+
+  it("test_audio_pill_sends_audio_quality — Audio pill sends quality: 'audio', audio_only: true", async () => {
+    const onDownload = vi.fn();
+    const user = userEvent.setup();
+    render(<VideoInfoCard info={mockInfo} onDownload={onDownload} />);
+
+    await user.click(screen.getByText("Audio only"));
+    await user.click(screen.getByRole("button", { name: /download/i }));
+
+    expect(onDownload).toHaveBeenCalledWith({
+      quality: "audio",
+      audio_only: true,
+    });
+  });
+});
+
+describe("VideoInfoCard spinner/disabled", () => {
+  it("should show 'Downloading...' with spinner and be disabled when downloading=true", () => {
+    render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} downloading />);
+    const button = screen.getByRole("button", { name: /downloading/i });
+    expect(button).toBeDisabled();
+    // Spinner SVG is present
+    expect(button.querySelector("svg")).toBeInTheDocument();
   });
 });
 
