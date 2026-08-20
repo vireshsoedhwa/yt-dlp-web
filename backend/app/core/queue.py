@@ -4,7 +4,7 @@ import hashlib
 from redis import Redis
 from rq import Queue
 
-from app.core.config import REDIS_URL, QUEUE_NAME
+from app.core.config import REDIS_URL, QUEUE_NAME, SERVING_FLAG_TTL_SECONDS
 
 # Shared Redis connection — created once, reused across requests
 _redis_conn: Redis | None = None
@@ -125,3 +125,27 @@ def clear_job_for_session(session_id: str, job_id: str) -> None:
 def clear_all_jobs_for_session(session_id: str) -> None:
     """Delete the session's entire jobs hash."""
     get_redis().delete(_session_jobs_key(session_id))
+
+
+# --- Serving flag (protects files from purge while being downloaded) ---
+
+def _serving_flag_key(session_id: str, filename: str) -> str:
+    """Return the Redis key for a file's serving flag."""
+    return f"ytdlp:serving:{session_id}:{filename}"
+
+
+def set_serving_flag(session_id: str, filename: str) -> None:
+    """Set a flag indicating the file is being actively downloaded.
+    The purger checks this and skips files with an active flag.
+    Auto-expires after SERVING_FLAG_TTL_SECONDS (default: 1 hour)."""
+    get_redis().setex(_serving_flag_key(session_id, filename), SERVING_FLAG_TTL_SECONDS, "1")
+
+
+def clear_serving_flag(session_id: str, filename: str) -> None:
+    """Clear the serving flag after the download completes."""
+    get_redis().delete(_serving_flag_key(session_id, filename))
+
+
+def is_file_being_served(session_id: str, filename: str) -> bool:
+    """Check if a file is currently being downloaded (serving flag is set)."""
+    return get_redis().exists(_serving_flag_key(session_id, filename)) > 0

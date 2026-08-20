@@ -232,10 +232,55 @@ def test_purge_multiple_sessions():
              patch("app.purger.get_files_for_session", return_value=[]), \
              patch("app.purger.clear_file_for_session"), \
              patch("app.purger.clear_all_files_for_session"), \
-             patch("app.purger.clear_all_jobs_for_session"):
+             patch("app.purger.clear_all_jobs_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False):
             result = _purge_all_sessions(max_age_hours=3)
 
         assert result["sessions_scanned"] == 3
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_purge_skips_file_with_serving_flag():
+    """_purge_all_sessions should NOT delete old files that have a serving flag."""
+    tmpdir = tempfile.mkdtemp()
+    try:
+        session_path = _setup_session_dir(tmpdir, "sess-1")
+        old_file = os.path.join(session_path, "video.mp4")
+        _make_old_file(old_file, age_hours=5.0)
+
+        with patch("app.purger.SESSION_DIR", os.path.join(tmpdir, ".session")), \
+             patch("app.purger.get_files_for_session", return_value=["video.mp4"]), \
+             patch("app.purger.clear_file_for_session"), \
+             patch("app.purger.clear_all_files_for_session"), \
+             patch("app.purger.clear_all_jobs_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=True):
+            result = _purge_all_sessions(max_age_hours=3)
+
+        assert result["files_purged"] == 0
+        assert os.path.isfile(old_file)  # file still exists
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_purge_deletes_file_without_serving_flag():
+    """_purge_all_sessions should delete old files that do NOT have a serving flag."""
+    tmpdir = tempfile.mkdtemp()
+    try:
+        session_path = _setup_session_dir(tmpdir, "sess-1")
+        old_file = os.path.join(session_path, "video.mp4")
+        _make_old_file(old_file, age_hours=5.0)
+
+        with patch("app.purger.SESSION_DIR", os.path.join(tmpdir, ".session")), \
+             patch("app.purger.get_files_for_session", return_value=["video.mp4"]), \
+             patch("app.purger.clear_file_for_session"), \
+             patch("app.purger.clear_all_files_for_session"), \
+             patch("app.purger.clear_all_jobs_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False):
+            result = _purge_all_sessions(max_age_hours=3)
+
+        assert result["files_purged"] == 1
+        assert not os.path.isfile(old_file)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

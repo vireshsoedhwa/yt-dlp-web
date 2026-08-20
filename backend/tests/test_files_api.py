@@ -128,16 +128,21 @@ def test_download_file_success():
     try:
         with patch("app.core.queue.file_belongs_to_session", return_value=True), \
              patch("app.api.files.get_session_file_path", return_value=session_file), \
+             patch("app.api.files.set_serving_flag") as mock_set_flag, \
              patch("app.api.files.delete_session_file") as mock_delete, \
-             patch("app.api.files.clear_file_for_session") as mock_clear:
+             patch("app.api.files.clear_file_for_session") as mock_clear, \
+             patch("app.api.files.clear_serving_flag") as mock_clear_flag:
             response = client.get("/api/files/test_video.mp4", headers=SESSION_HEADERS)
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/octet-stream"
+        # Verify serving flag was set before serving
+        mock_set_flag.assert_called_once_with("test-session-123", "test_video.mp4")
         # Verify the background cleanup task was executed (TestClient runs
         # background tasks synchronously after the response)
         mock_delete.assert_called_once_with("test-session-123", "test_video.mp4")
         mock_clear.assert_called_once_with("test-session-123", "test_video.mp4")
+        mock_clear_flag.assert_called_once_with("test-session-123", "test_video.mp4")
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)

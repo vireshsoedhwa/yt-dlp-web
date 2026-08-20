@@ -364,7 +364,10 @@ def test_get_job_status_does_not_clear_dedup_while_in_progress():
 
 def test_list_jobs_returns_session_jobs(fake_job):
     """GET /api/jobs should return jobs for the session with status."""
+    from datetime import datetime, timezone
     fake_job.get_status.return_value = "finished"
+    # Set ended_at to recent so it's within the 2h card TTL
+    fake_job.ended_at = datetime.now(timezone.utc)
     with patch("app.api.download.get_jobs_for_session", return_value=[
         {"job_id": "abc12345", "url": "https://example.com/video"},
     ]), \
@@ -426,3 +429,93 @@ def test_dismiss_job_returns_400_without_session_header():
     """DELETE /api/jobs/{job_id} without X-Session-ID should return 400."""
     response = client.delete("/api/jobs/abc12345")
     assert response.status_code == 400
+
+
+# --- GET /api/jobs -- expired job filtering ---
+
+def test_list_jobs_skips_expired_finished_jobs(fake_job):
+    """GET /api/jobs should not return finished jobs older than JOB_CARD_TTL_HOURS."""
+    from datetime import datetime, timedelta, timezone
+    fake_job.get_status.return_value = "finished"
+    # Set ended_at to 3 hours ago (expired, > 2h TTL)
+    fake_job.ended_at = datetime.now(timezone.utc) - timedelta(hours=3)
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == {"jobs": []}
+
+
+def test_list_jobs_returns_recent_finished_jobs(fake_job):
+    """GET /api/jobs should return finished jobs younger than JOB_CARD_TTL_HOURS."""
+    from datetime import datetime, timedelta, timezone
+    fake_job.get_status.return_value = "finished"
+    # Set ended_at to 30 minutes ago (within 2h TTL)
+    fake_job.ended_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["job_id"] == "abc12345"
+
+
+def test_list_jobs_skips_expired_failed_jobs(fake_job):
+    """GET /api/jobs should not return failed jobs older than JOB_CARD_TTL_HOURS."""
+    from datetime import datetime, timedelta, timezone
+    fake_job.get_status.return_value = "failed"
+    fake_job.ended_at = datetime.now(timezone.utc) - timedelta(hours=3)
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == {"jobs": []}
+
+
+def test_list_jobs_includes_in_progress_jobs(fake_job):
+    """GET /api/jobs should always include in-progress jobs (no ended_at)."""
+    fake_job.get_status.return_value = "started"
+    fake_job.ended_at = None
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["status"] == "started"
+
+
+# --- GET /api/jobs -- ended_at in response ---
+
+def test_list_jobs_includes_ended_at(fake_job):
+    """GET /api/jobs response should include ended_at when job has it."""
+    from datetime import datetime, timezone
+    fake_job.get_status.return_value = "finished"
+    fake_job.ended_at = datetime.now(timezone.utc)
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["jobs"][0]["ended_at"] is not None

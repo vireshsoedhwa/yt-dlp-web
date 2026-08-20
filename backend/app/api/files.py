@@ -24,6 +24,8 @@ from app.core.queue import (
     get_files_for_session,
     clear_file_for_session,
     clear_all_jobs_for_session,
+    set_serving_flag,
+    clear_serving_flag,
 )
 from app.core.files_service import (
     get_session_file_path,
@@ -97,13 +99,17 @@ def download_file(
     if not os.path.isfile(session_path):
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Set serving flag so the background purger skips this file while
+    # it's being actively downloaded (handles slow connections up to 1h).
+    set_serving_flag(session_id, basename)
+
     # Schedule cleanup after the response is sent.
-    # The background task deletes the file from the session directory
-    # and clears the Redis mapping. If the session directory ends up empty,
-    # it is removed automatically.
+    # The background task deletes the file from the session directory,
+    # clears the Redis mappings, and clears the serving flag.
     def _cleanup():
         delete_session_file(session_id, basename)
         clear_file_for_session(session_id, basename)
+        clear_serving_flag(session_id, basename)
 
     background_tasks.add_task(_cleanup)
 

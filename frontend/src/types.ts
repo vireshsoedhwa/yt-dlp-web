@@ -58,4 +58,5 @@ export interface SessionJob {
   status: JobStatus;
   result: JobResult | null;
   error: string | null;
+  ended_at: string | null; // ISO timestamp when job finished, null if still running
 }

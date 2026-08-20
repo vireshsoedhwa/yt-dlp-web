@@ -15,6 +15,13 @@ PURGE_MAX_AGE_HOURS = int(os.environ.get("PURGE_MAX_AGE_HOURS", "3"))
 # Purge -- how often the background purger runs (in seconds)
 PURGE_INTERVAL_SECONDS = int(os.environ.get("PURGE_INTERVAL_SECONDS", "3600"))  # 1 hour
 
+# Job card -- how long the download card stays visible after job finishes (hours)
+JOB_CARD_TTL_HOURS = int(os.environ.get("JOB_CARD_TTL_HOURS", "2"))
+
+# Serving flag -- TTL for the "file is being downloaded" Redis flag (seconds)
+# Protects files from being purged while actively being downloaded.
+SERVING_FLAG_TTL_SECONDS = int(os.environ.get("SERVING_FLAG_TTL_SECONDS", "3600"))
+
 # Session isolation -- directory for per-session downloads
 SESSION_DIR = os.environ.get("SESSION_DIR", f"{DOWNLOAD_DIR}/.session")
 

@@ -124,9 +124,14 @@ def get_job_status(job_id: str):
 
 @router.get("/jobs")
 def list_jobs(x_session_id: str | None = Header(None)):
-    """List all jobs for the current session with their status."""
+    """List all jobs for the current session with their status.
+    Jobs that have been finished/failed longer than JOB_CARD_TTL_HOURS
+    are filtered out so they don't reappear on page refresh."""
     if not x_session_id:
         raise HTTPException(status_code=400, detail="X-Session-ID header required")
+
+    from datetime import datetime, timedelta, timezone
+    from app.core.config import JOB_CARD_TTL_HOURS
 
     jobs = get_jobs_for_session(x_session_id)
     result = []
@@ -135,12 +140,23 @@ def list_jobs(x_session_id: str | None = Header(None)):
         try:
             job = Job.fetch(job_id, connection=get_redis())
             status = job.get_status()
+
+            # Filter out expired job cards (finished/failed > JOB_CARD_TTL_HOURS ago)
+            if status in ("finished", "failed") and job.ended_at:
+                ended_utc = job.ended_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - ended_utc
+                if age > timedelta(hours=JOB_CARD_TTL_HOURS):
+                    # Card has expired — skip it
+                    # Don't clear from session hash (purge will clean up the file at 3h)
+                    continue
+
             result.append({
                 "job_id": job_id,
                 "url": job_info["url"],
                 "status": status,
                 "result": job.result,
                 "error": str(job.exc_info) if job.exc_info else None,
+                "ended_at": job.ended_at.isoformat() if job.ended_at else None,
             })
         except NoSuchJobError:
             # Job expired from Redis — clear from session and skip

@@ -270,3 +270,43 @@ def test_get_jobs_for_session_decodes_bytes(fake_redis):
     assert isinstance(result[0]["job_id"], str)
     assert result[0]["url"] == "https://example.com/v"
     assert isinstance(result[0]["url"], str)
+
+
+# --- Serving flag (protects files from purge while being downloaded) ---
+
+def test_set_serving_flag_sets_key_with_ttl(fake_redis):
+    """set_serving_flag should call setex with correct key and TTL."""
+    from app.core.queue import set_serving_flag
+    set_serving_flag("session-123", "video.mp4")
+    fake_redis.setex.assert_called_once()
+    args = fake_redis.setex.call_args[0]
+    assert "session-123" in args[0]
+    assert "video.mp4" in args[0]
+    assert args[1] == 3600  # SERVING_FLAG_TTL_SECONDS
+    assert args[2] == "1"
+
+
+def test_clear_serving_flag_deletes_key(fake_redis):
+    """clear_serving_flag should call redis.delete."""
+    from app.core.queue import clear_serving_flag
+    clear_serving_flag("session-123", "video.mp4")
+    fake_redis.delete.assert_called_once()
+    key = fake_redis.delete.call_args[0][0]
+    assert "session-123" in key
+    assert "video.mp4" in key
+
+
+def test_is_file_being_served_returns_true(fake_redis):
+    """is_file_being_served should return True when flag exists."""
+    fake_redis.exists.return_value = 1
+    from app.core.queue import is_file_being_served
+    result = is_file_being_served("session-123", "video.mp4")
+    assert result is True
+
+
+def test_is_file_being_served_returns_false(fake_redis):
+    """is_file_being_served should return False when flag doesn't exist."""
+    fake_redis.exists.return_value = 0
+    from app.core.queue import is_file_being_served
+    result = is_file_being_served("session-123", "video.mp4")
+    assert result is False

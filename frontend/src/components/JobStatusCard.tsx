@@ -26,6 +26,18 @@ interface JobStatusCardProps {
   onDismiss: (jobId: string) => void;
 }
 
+/**
+ * Format a duration in milliseconds as "H:MM:SS".
+ * Exported so tests can verify the formatting logic.
+ */
+export function formatCountdown(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
+
 const POLL_INTERVAL_MS = 2000;
 
 const STATUS_STYLES: Record<StatusType, string> = {
@@ -40,6 +52,7 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
   const [pollError, setPollError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<string | null>(null);
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
   // Ref to track the latest job status so the interval can check it
   // without re-triggering the useEffect.
@@ -77,6 +90,51 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
 
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  // Countdown timer — 2 hours from ended_at.
+  // Only runs for finished/failed jobs. Auto-dismisses the card when the
+  // TTL elapses. Cleared on unmount.
+  useEffect(() => {
+    if (!job || job.status === "queued" || job.status === "started") {
+      setRemainingMs(null);
+      return;
+    }
+
+    const endedAt = job.ended_at;
+    if (!endedAt) {
+      setRemainingMs(null);
+      return;
+    }
+
+    const CARD_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+    const updateRemaining = () => {
+      const ended = new Date(endedAt).getTime();
+      const expires = ended + CARD_TTL_MS;
+      const now = Date.now();
+      const remaining = expires - now;
+
+      if (remaining <= 0) {
+        setRemainingMs(0);
+        onDismiss(jobId);
+        return null;
+      }
+      setRemainingMs(remaining);
+      return remaining;
+    };
+
+    const initial = updateRemaining();
+    if (initial === null || initial <= 0) return;
+
+    const interval = setInterval(() => {
+      const result = updateRemaining();
+      if (result === null || result <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [job, jobId, onDismiss]);
 
   const handleDownload = useCallback(async (filename: string) => {
     setDownloading(filename);
@@ -126,6 +184,11 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
               <span className="text-xs text-slate-500">polling...</span>
             )}
           </div>
+          {remainingMs !== null && remainingMs > 0 && (
+            <p className="text-xs text-amber-500 mt-1">
+              Expires in {formatCountdown(remainingMs)}
+            </p>
+          )}
           <p className="text-sm text-slate-300 truncate" title={url}>
             {url}
           </p>

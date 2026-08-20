@@ -18,6 +18,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - PURGE_MAX_AGE_HOURS=3
       - PURGE_INTERVAL_SECONDS=3600
+      - JOB_CARD_TTL_HOURS=2
+      - SERVING_FLAG_TTL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
       - redis
@@ -34,6 +36,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - PURGE_MAX_AGE_HOURS=3
       - PURGE_INTERVAL_SECONDS=3600
+      - JOB_CARD_TTL_HOURS=2
+      - SERVING_FLAG_TTL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
       - redis

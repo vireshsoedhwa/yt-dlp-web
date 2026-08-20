@@ -25,7 +25,7 @@ vi.mock("../src/lib/api", () => ({
 }));
 
 import { getJobStatus, ApiError } from "../src/lib/api";
-import { JobStatusCard } from "../src/components/JobStatusCard";
+import { JobStatusCard, formatCountdown } from "../src/components/JobStatusCard";
 
 const mockGetJobStatus = vi.mocked(getJobStatus);
 
@@ -303,5 +303,66 @@ describe("JobStatusCard", () => {
     expect(mockGetJobStatus).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
+  });
+
+  it("test_formatCountdown_formats_correctly", () => {
+    expect(formatCountdown(3661000)).toBe("1:01:01");
+    expect(formatCountdown(0)).toBe("0:00:00");
+    expect(formatCountdown(7322000)).toBe("2:02:02");
+  });
+
+  it("test_countdown_displayed_when_finished", async () => {
+    const now = new Date();
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        ended_at: now.toISOString(),
+        result: { status: "completed", url: "https://example.com", format: "best" },
+      }),
+    );
+
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Expires in/)).toBeInTheDocument();
+    });
+  });
+
+  it("test_countdown_not_displayed_while_downloading", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({ status: "started", ended_at: null }),
+    );
+
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("started")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
+  });
+
+  it("test_countdown_calls_onDismiss_at_zero", async () => {
+    // ended_at 3 hours ago → already expired past the 2-hour TTL
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const onDismiss = vi.fn();
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        ended_at: threeHoursAgo,
+        result: { status: "completed", url: "https://example.com", format: "best" },
+      }),
+    );
+
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={onDismiss} />,
+    );
+
+    await waitFor(() => {
+      expect(onDismiss).toHaveBeenCalledWith("abc123");
+    });
   });
 });

@@ -20,6 +20,7 @@ from app.core.queue import (
     clear_file_for_session,
     clear_all_files_for_session,
     clear_all_jobs_for_session,
+    is_file_being_served,
 )
 
 logger = logging.getLogger("purger")
@@ -79,7 +80,15 @@ def _purge_all_sessions(max_age_hours: int) -> dict:
             if age_seconds < max_age_seconds:
                 continue
 
-            # File is old — delete it
+            # Skip files that are actively being downloaded (serving flag set)
+            if is_file_being_served(session_id, filename):
+                logger.info(
+                    f"Skipping {filename} in session {session_id} "
+                    f"(being downloaded, {age_seconds/3600:.1f}h old)"
+                )
+                continue
+
+            # File is old and not being served — delete it
             size = os.path.getsize(filepath)
             os.remove(filepath)
             clear_file_for_session(session_id, filename)
