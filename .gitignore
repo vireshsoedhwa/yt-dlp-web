@@ -26,5 +26,9 @@ downloads/*
 *.swp
 *.swo
 
+# OS
+.DS_Store
+._.DS_Store
+
 # Docker
 *.log
