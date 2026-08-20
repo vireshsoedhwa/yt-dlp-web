@@ -17,6 +17,7 @@ services:
       - DOWNLOAD_DIR=/app/downloads
       - REDIS_URL=redis://redis:6379/0
       - PURGE_MAX_AGE_HOURS=3
+      - PURGE_INTERVAL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
       - redis
@@ -32,6 +33,7 @@ services:
       - DOWNLOAD_DIR=/app/downloads
       - REDIS_URL=redis://redis:6379/0
       - PURGE_MAX_AGE_HOURS=3
+      - PURGE_INTERVAL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
       - redis

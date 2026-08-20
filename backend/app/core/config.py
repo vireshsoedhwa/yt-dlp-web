@@ -12,6 +12,9 @@ QUEUE_NAME = "downloads"
 # Purge -- max age in hours before unclaimed files are deleted
 PURGE_MAX_AGE_HOURS = int(os.environ.get("PURGE_MAX_AGE_HOURS", "3"))
 
+# Purge -- how often the background purger runs (in seconds)
+PURGE_INTERVAL_SECONDS = int(os.environ.get("PURGE_INTERVAL_SECONDS", "3600"))  # 1 hour
+
 # Session isolation -- directory for per-session downloads
 SESSION_DIR = os.environ.get("SESSION_DIR", f"{DOWNLOAD_DIR}/.session")
 
