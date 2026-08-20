@@ -8,6 +8,7 @@ so we configure __enter__ to return the mock itself.
 
 import os
 import tempfile
+import pytest
 from unittest.mock import patch, MagicMock, call
 
 from app.core.config import QUALITY_MAP, AUDIO_FORMAT, DEFAULT_OUTPUT_TEMPLATE
@@ -39,6 +40,20 @@ def _make_fake_ydl(extract_info_return=None, fire_hook=True):
 
     return ydl
 
+
+
+@pytest.fixture(autouse=True)
+def mock_extract_info_for_download(request):
+    """Auto-mock extract_info so download_video doesn't make a second YoutubeDL call.
+    Tests that directly test extract_info are excluded. Individual tests can
+    override with their own patch if they need specific metadata."""
+    if request.node.name.startswith("test_extract_info"):
+        yield
+        return
+    with patch("app.core.yt_dlp_service.extract_info", return_value={
+        "title": "", "uploader": None, "duration": None, "thumbnail": None, "formats": []
+    }) as mock:
+        yield mock
 
 # --- _BASE_YDL_OPTS checks ---
 
@@ -407,13 +422,53 @@ def test_download_video_result_includes_quality_and_format():
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
          patch("app.core.queue.register_file_for_session"), \
-         patch("os.path.isfile", return_value=True):
+         patch("os.path.isfile", return_value=True), \
+         patch("app.core.yt_dlp_service.extract_info", return_value={"title": "", "uploader": None, "duration": None, "thumbnail": None, "formats": []}):
         from app.core.yt_dlp_service import download_video
         result = download_video("https://example.com/video", quality="720p", session_id="sess-1")
 
     assert result["quality"] == "720p"
     assert result["format"] == QUALITY_MAP["720p"]
     assert result["session_id"] == "sess-1"
+
+
+def test_download_video_result_includes_title_and_thumbnail():
+    """download_video result should include title, thumbnail, and uploader from extract_info."""
+    fake_ydl = _make_fake_ydl()
+    fake_meta = {
+        "title": "My Test Video",
+        "uploader": "Test Channel",
+        "duration": 120,
+        "thumbnail": "https://example.com/thumb.jpg",
+        "formats": [],
+    }
+
+    with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
+         patch("app.core.queue.register_file_for_session"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("app.core.yt_dlp_service.extract_info", return_value=fake_meta):
+        from app.core.yt_dlp_service import download_video
+        result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
+
+    assert result["title"] == "My Test Video"
+    assert result["thumbnail"] == "https://example.com/thumb.jpg"
+    assert result["uploader"] == "Test Channel"
+
+
+def test_download_video_handles_extract_info_failure():
+    """download_video should not crash if extract_info fails — title is empty, thumbnail is None."""
+    fake_ydl = _make_fake_ydl()
+
+    with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
+         patch("app.core.queue.register_file_for_session"), \
+         patch("os.path.isfile", return_value=True), \
+         patch("app.core.yt_dlp_service.extract_info", side_effect=Exception("Network error")):
+        from app.core.yt_dlp_service import download_video
+        result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
+
+    assert result["title"] == ""
+    assert result["thumbnail"] is None
+    assert result["uploader"] is None
 
 
 # --- get_version ---

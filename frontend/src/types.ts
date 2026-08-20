@@ -34,6 +34,10 @@ export interface JobResult {
   url: string;
   format: string;
   files: string[];
+  quality?: string;
+  title?: string;
+  thumbnail?: string | null;
+  uploader?: string | null;
 }
 
 export interface JobInfo {

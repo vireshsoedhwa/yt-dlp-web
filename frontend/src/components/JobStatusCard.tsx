@@ -172,7 +172,14 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
 
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
+        {job?.result?.thumbnail && (
+          <img
+            src={job.result.thumbnail}
+            alt={job.result.title || url}
+            className="w-12 h-12 rounded object-cover flex-shrink-0"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span
@@ -189,12 +196,19 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
               Expires in {formatCountdown(remainingMs)}
             </p>
           )}
-          <p className="text-sm text-slate-300 truncate" title={url}>
+          {job?.result?.title && (
+            <p className="text-sm font-medium text-slate-100 truncate mt-1" title={job.result.title}>
+              {job.result.title}
+            </p>
+          )}
+          <p className="text-xs text-slate-500 truncate" title={url}>
             {url}
           </p>
-          {job?.result?.format && (
+          {job?.result?.quality && (
             <p className="text-xs text-slate-500 mt-1">
-              Format: {job.result.format}
+              {job.result.quality === "audio"
+                ? "Audio only (MP3)"
+                : `Quality: ${job.result.quality}`}
             </p>
           )}
           {job?.error && (

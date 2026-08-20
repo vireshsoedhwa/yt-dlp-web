@@ -175,6 +175,21 @@ def download_video(
         for filename in downloaded_files:
             register_file_for_session(session_id, filename)
 
+    # Fetch video metadata (title, thumbnail, uploader) for the job result.
+    # This is a lightweight extract_info call (skip_download=True) that adds
+    # ~1-2s after the download completes. Non-critical — if it fails, the
+    # card falls back to showing the URL only.
+    video_title = ""
+    thumbnail_url = None
+    uploader = None
+    try:
+        meta = extract_info(url)
+        video_title = meta.get("title", "")
+        thumbnail_url = meta.get("thumbnail")
+        uploader = meta.get("uploader")
+    except Exception:
+        pass
+
     return {
         "status": "completed",
         "url": url,
@@ -182,6 +197,9 @@ def download_video(
         "format": fmt,
         "files": downloaded_files,
         "session_id": session_id,
+        "title": video_title,
+        "thumbnail": thumbnail_url,
+        "uploader": uploader,
     }
 
 

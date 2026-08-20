@@ -93,11 +93,17 @@ describe("JobStatusCard", () => {
     });
   });
 
-  it("should show format from result when finished", async () => {
+  it("test_card_shows_title_when_finished", async () => {
     mockGetJobStatus.mockResolvedValue(
       makeJob({
         status: "finished",
-        result: { status: "completed", url: "https://example.com", format: "137+140" },
+        result: {
+          status: "completed",
+          url: "https://example.com",
+          format: "137+140",
+          files: [],
+          title: "Test Video",
+        },
       }),
     );
     render(
@@ -105,8 +111,95 @@ describe("JobStatusCard", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Format: 137+140")).toBeInTheDocument();
+      expect(screen.getByText("Test Video")).toBeInTheDocument();
     });
+  });
+
+  it("test_card_shows_thumbnail_when_finished", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        result: {
+          status: "completed",
+          url: "https://example.com",
+          format: "best",
+          files: [],
+          title: "Test Video",
+          thumbnail: "https://example.com/thumb.jpg",
+        },
+      }),
+    );
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      const img = screen.getByRole("img");
+      expect(img).toHaveAttribute("src", "https://example.com/thumb.jpg");
+    });
+  });
+
+  it("test_card_shows_quality_label_not_raw_format", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        result: {
+          status: "completed",
+          url: "https://example.com",
+          format: "137+140",
+          files: [],
+          quality: "1080p",
+        },
+      }),
+    );
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Quality: 1080p")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Format:/)).not.toBeInTheDocument();
+  });
+
+  it("test_card_shows_audio_label_for_audio_quality", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        result: {
+          status: "completed",
+          url: "https://example.com",
+          format: "bestaudio",
+          files: [],
+          quality: "audio",
+        },
+      }),
+    );
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Audio only (MP3)")).toBeInTheDocument();
+    });
+  });
+
+  it("test_card_shows_url_as_fallback_when_no_title", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "started",
+        result: null,
+      }),
+    );
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com/video" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("https://example.com/video")).toBeInTheDocument();
+    });
+    // No title text should be present (result is null so title is undefined)
+    expect(screen.queryByText("Test Video")).not.toBeInTheDocument();
   });
 
   it("should show error message when job fails", async () => {
