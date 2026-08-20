@@ -451,7 +451,7 @@ describe("JobStatusCard", () => {
     );
 
     await waitFor(() => {
-      expect(onStatusChange).toHaveBeenCalledWith("finished");
+      expect(onStatusChange).toHaveBeenCalledWith("finished", undefined);
     });
   });
 
@@ -465,7 +465,7 @@ describe("JobStatusCard", () => {
     );
 
     await waitFor(() => {
-      expect(onStatusChange).toHaveBeenCalledWith("failed");
+      expect(onStatusChange).toHaveBeenCalledWith("failed", "Something went wrong");
     });
   });
 

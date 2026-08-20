@@ -135,6 +135,25 @@ export async function getJobs(): Promise<SessionJob[]> {
   return data.jobs;
 }
 
+/** POST /api/update — self-upgrade yt-dlp to the latest version. */
+export async function triggerUpdate(): Promise<{ status: string; version?: string }> {
+  const res = await fetch(`${API_BASE}/api/update`, {
+    method: "POST",
+    headers: _headers(),
+  });
+  if (!res.ok) {
+    const detail = await extractError(res);
+    throw new ApiError(res.status, detail);
+  }
+  return res.json() as Promise<{ status: string; version?: string }>;
+}
+
+/** Detect YouTube bot-check errors that a yt-dlp update might fix. */
+export function isBotCheckError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("sign in to confirm") || lower.includes("not a bot");
+}
+
 /** DELETE /api/jobs/{job_id} — dismiss a job from the session. */
 export async function dismissJob(jobId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/jobs/${jobId}`, {

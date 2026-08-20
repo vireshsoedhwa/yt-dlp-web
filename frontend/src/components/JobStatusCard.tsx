@@ -25,7 +25,7 @@ interface JobStatusCardProps {
   jobId: string;
   url: string;
   onDismiss: (jobId: string) => void;
-  onStatusChange?: (status: StatusType) => void;
+  onStatusChange?: (status: StatusType, errorMsg?: string) => void;
 }
 
 /**
@@ -65,7 +65,7 @@ export function JobStatusCard({ jobId, url, onDismiss, onStatusChange }: JobStat
       setJob(info);
       setPollError(null);
       if (info.status === "finished" || info.status === "failed") {
-        onStatusChange?.(info.status);
+        onStatusChange?.(info.status, info.error ?? undefined);
       }
     } catch (err) {
       if (err instanceof ApiError) {

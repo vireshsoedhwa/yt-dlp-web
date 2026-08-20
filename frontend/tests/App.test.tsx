@@ -19,7 +19,12 @@ vi.mock("../src/lib/api", () => ({
   dismissJob: vi.fn(),
   downloadFile: vi.fn(),
   listFiles: vi.fn(),
+  triggerUpdate: vi.fn(),
   getOrCreateSessionId: vi.fn(() => "test-session-id"),
+  isBotCheckError: (msg: string) => {
+    const lower = msg.toLowerCase();
+    return lower.includes("sign in to confirm") || lower.includes("not a bot");
+  },
   ApiError: class ApiError extends Error {
     constructor(
       public status: number,

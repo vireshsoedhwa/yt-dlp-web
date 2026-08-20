@@ -13,7 +13,7 @@ import { UrlInput } from "./components/UrlInput";
 import { VideoInfoCard, type DownloadOptions } from "./components/VideoInfoCard";
 import { JobStatusCard } from "./components/JobStatusCard";
 import { ErrorMessage } from "./components/ErrorMessage";
-import { fetchVideoInfo, startDownload, getJobs, dismissJob, ApiError } from "./lib/api";
+import { fetchVideoInfo, startDownload, getJobs, dismissJob, triggerUpdate, isBotCheckError, ApiError } from "./lib/api";
 import type { VideoInfo, JobStatus } from "./types";
 
 interface ActiveJob {
@@ -48,9 +48,21 @@ export function App() {
       const info = await fetchVideoInfo(url);
       setVideoInfo(info);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Failed to fetch video info",
-      );
+      const msg = err instanceof ApiError ? err.message : "Failed to fetch video info";
+      if (isBotCheckError(msg)) {
+        setError("YouTube bot check detected — auto-updating yt-dlp, please wait...");
+        try {
+          await triggerUpdate();
+          const info = await fetchVideoInfo(url);
+          setVideoInfo(info);
+          setError(null);
+        } catch (retryErr) {
+          const retryMsg = retryErr instanceof ApiError ? retryErr.message : "Failed to fetch video info after update";
+          setError(retryMsg);
+        }
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -89,9 +101,13 @@ export function App() {
     [videoInfo, currentUrl],
   );
 
-  const handleStatusChange = useCallback((status: JobStatus) => {
+  const handleStatusChange = useCallback((status: JobStatus, errorMsg?: string) => {
     if (status === "finished" || status === "failed") {
       setDownloading(false);
+      if (status === "failed" && errorMsg && isBotCheckError(errorMsg)) {
+        setError("YouTube bot check detected — auto-updating yt-dlp, please try again after the update completes.");
+        triggerUpdate().catch(() => {});
+      }
     }
   }, []);
 
