@@ -16,7 +16,6 @@ import os
 import subprocess
 import sys
 import importlib
-from urllib.parse import urlparse, parse_qs, urlencode
 
 import yt_dlp
 
@@ -30,6 +29,8 @@ from app.core.config import (
 # Shared yt-dlp options that help with YouTube's anti-bot measures.
 # These are applied to both extract_info and download_video.
 _BASE_YDL_OPTS: dict = {
+    # Only process the single video, not the entire playlist
+    "noplaylist": True,
     # Use the android player client which is less aggressive with 403 blocks
     "extractor_args": {
         "youtube": {
@@ -47,36 +48,6 @@ _BASE_YDL_OPTS: dict = {
 }
 
 
-def _sanitize_url(url: str) -> str:
-    """
-    Strip playlist/radio parameters from a YouTube URL so yt-dlp only
-    processes the single video, not the entire playlist.
-
-    Removes: list, start_radio, index, t parameters.
-    Keeps: v (video ID), and the base URL.
-
-    Examples:
-      https://www.youtube.com/watch?v=X&list=RD...&start_radio=1
-        -> https://www.youtube.com/watch?v=X
-      https://youtu.be/X?list=...
-        -> https://youtu.be/X
-    """
-    parsed = urlparse(url)
-
-    # For youtu.be short URLs, just strip the query string entirely
-    if parsed.hostname == "youtu.be":
-        return f"https://youtu.be{parsed.path}"
-
-    # For watch URLs, keep only the v parameter
-    if parsed.path == "/watch":
-        qs = parse_qs(parsed.query)
-        video_id = qs.get("v", [None])[0]
-        if video_id:
-            return f"https://www.youtube.com/watch?v={video_id}"
-
-    return url
-
-
 def get_version() -> str:
     """Return the currently installed yt-dlp version string."""
     return yt_dlp.version.__version__
@@ -84,7 +55,6 @@ def get_version() -> str:
 
 def extract_info(url: str) -> dict:
     """Fetch metadata for a URL without downloading."""
-    url = _sanitize_url(url)
     ydl_opts = {
         **_BASE_YDL_OPTS,
         "quiet": True,
@@ -121,7 +91,6 @@ def download_video(
     RQ stores this as the job result, retrievable via job.result once the
     job is finished.
     """
-    url = _sanitize_url(url)
     fmt = AUDIO_FORMAT if audio_only else QUALITY_MAP.get(quality, QUALITY_MAP["1080p"])
     suffix = "audio" if audio_only else quality
 

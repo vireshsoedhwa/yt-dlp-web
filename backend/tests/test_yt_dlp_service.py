@@ -40,48 +40,19 @@ def _make_fake_ydl(extract_info_return=None, fire_hook=True):
     return ydl
 
 
-# --- _sanitize_url ---
+# --- _BASE_YDL_OPTS checks ---
 
-def test_sanitize_url_strips_playlist_params():
-    """_sanitize_url should remove list and start_radio params."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://www.youtube.com/watch?v=abc123&list=RDabc123&start_radio=1")
-    assert result == "https://www.youtube.com/watch?v=abc123"
-
-
-def test_sanitize_url_strips_index_and_t_params():
-    """_sanitize_url should remove index and t params."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://www.youtube.com/watch?v=abc123&list=PL123&index=5&t=120")
-    assert result == "https://www.youtube.com/watch?v=abc123"
+def test_base_opts_includes_noplaylist():
+    """_BASE_YDL_OPTS should include noplaylist=True to prevent playlist extraction."""
+    from app.core.yt_dlp_service import _BASE_YDL_OPTS
+    assert _BASE_YDL_OPTS.get("noplaylist") is True
 
 
-def test_sanitize_url_keeps_plain_watch_url():
-    """_sanitize_url should not change a plain watch URL."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://www.youtube.com/watch?v=abc123")
-    assert result == "https://www.youtube.com/watch?v=abc123"
-
-
-def test_sanitize_url_strips_query_from_youtu_be():
-    """_sanitize_url should strip query string from youtu.be URLs."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://youtu.be/abc123?list=RDabc123&start_radio=1")
-    assert result == "https://youtu.be/abc123"
-
-
-def test_sanitize_url_keeps_youtu_be_without_query():
-    """_sanitize_url should not change a youtu.be URL without query params."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://youtu.be/abc123")
-    assert result == "https://youtu.be/abc123"
-
-
-def test_sanitize_url_preserves_non_youtube_urls():
-    """_sanitize_url should return non-YouTube URLs unchanged."""
-    from app.core.yt_dlp_service import _sanitize_url
-    result = _sanitize_url("https://vimeo.com/12345")
-    assert result == "https://vimeo.com/12345"
+def test_base_opts_includes_anti_403():
+    """_BASE_YDL_OPTS should include extractor_args and http_headers."""
+    from app.core.yt_dlp_service import _BASE_YDL_OPTS
+    assert "extractor_args" in _BASE_YDL_OPTS
+    assert "http_headers" in _BASE_YDL_OPTS
 
 
 # --- extract_info ---
