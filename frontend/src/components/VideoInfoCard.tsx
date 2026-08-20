@@ -82,30 +82,25 @@ export function VideoInfoCard({
 
         {/* Download controls */}
         <div className="space-y-3 border-t border-slate-700 pt-4">
-          {/* Quality pills — video resolutions hidden when Audio is selected */}
-          {!isAudio && (
-            <div className="flex flex-wrap gap-2">
-              {(["1080p", "720p", "480p", "360p"] as const).map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => setQuality(q)}
-                  className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
-                  style={
-                    quality === q
-                      ? { backgroundColor: "#16a34a", color: "#ffffff" }
-                      : { backgroundColor: "#334155", color: "#cbd5e1" }
-                  }
-                  aria-pressed={quality === q}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Audio only pill — separate; selecting it hides video quality pills */}
+          {/* Quality pills — all always visible; selected one is green */}
           <div className="flex flex-wrap gap-2">
+            {(["1080p", "720p", "480p", "360p"] as const).map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setQuality(q)}
+                className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                style={
+                  quality === q
+                    ? { backgroundColor: "#16a34a", color: "#ffffff" }
+                    : { backgroundColor: "#334155", color: "#cbd5e1" }
+                }
+                aria-pressed={quality === q}
+              >
+                {q}
+              </button>
+            ))}
+            {/* Audio only pill — in the same row */}
             <button
               type="button"
               onClick={() => setQuality("audio")}

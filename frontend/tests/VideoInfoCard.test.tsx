@@ -121,7 +121,7 @@ describe("VideoInfoCard quality pills", () => {
     });
   });
 
-  it("test_audio_pill_hides_video_pills — clicking Audio hides video quality pills", async () => {
+  it("test_audio_pill_keeps_video_pills_visible — clicking Audio keeps video pills visible", async () => {
     const user = userEvent.setup();
     render(<VideoInfoCard info={mockInfo} onDownload={vi.fn()} />);
 
@@ -131,11 +131,15 @@ describe("VideoInfoCard quality pills", () => {
     // Click Audio pill
     await user.click(screen.getByText("Audio only"));
 
-    // Video pills should be gone
-    expect(screen.queryByText("1080p")).not.toBeInTheDocument();
-    expect(screen.queryByText("720p")).not.toBeInTheDocument();
-    expect(screen.queryByText("480p")).not.toBeInTheDocument();
-    expect(screen.queryByText("360p")).not.toBeInTheDocument();
+    // Video pills should still be visible (not hidden)
+    expect(screen.getByText("1080p")).toBeInTheDocument();
+    expect(screen.getByText("720p")).toBeInTheDocument();
+    expect(screen.getByText("480p")).toBeInTheDocument();
+    expect(screen.getByText("360p")).toBeInTheDocument();
+    // Audio pill should be selected (aria-pressed)
+    expect(screen.getByText("Audio only")).toHaveAttribute("aria-pressed", "true");
+    // Video pills should not be selected
+    expect(screen.getByText("1080p")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("test_audio_pill_sends_audio_quality — Audio pill sends quality: 'audio', audio_only: true", async () => {
