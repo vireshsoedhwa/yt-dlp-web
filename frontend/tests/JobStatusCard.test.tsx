@@ -438,6 +438,50 @@ describe("JobStatusCard", () => {
     expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
   });
 
+  it("should call onStatusChange when job finishes", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "finished",
+        result: { status: "completed", url: "https://example.com", format: "best" },
+      }),
+    );
+    const onStatusChange = vi.fn();
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} onStatusChange={onStatusChange} />,
+    );
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenCalledWith("finished");
+    });
+  });
+
+  it("should call onStatusChange when job fails", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({ status: "failed", error: "Something went wrong" }),
+    );
+    const onStatusChange = vi.fn();
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} onStatusChange={onStatusChange} />,
+    );
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenCalledWith("failed");
+    });
+  });
+
+  it("should not call onStatusChange while job is still running", async () => {
+    mockGetJobStatus.mockResolvedValue(makeJob({ status: "started" }));
+    const onStatusChange = vi.fn();
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} onStatusChange={onStatusChange} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("started")).toBeInTheDocument();
+    });
+    expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
   it("test_countdown_calls_onDismiss_at_zero", async () => {
     // ended_at 3 hours ago → already expired past the 2-hour TTL
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();

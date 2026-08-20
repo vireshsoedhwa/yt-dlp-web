@@ -25,6 +25,14 @@ SERVING_FLAG_TTL_SECONDS = int(os.environ.get("SERVING_FLAG_TTL_SECONDS", "3600"
 # Session isolation -- directory for per-session downloads
 SESSION_DIR = os.environ.get("SESSION_DIR", f"{DOWNLOAD_DIR}/.session")
 
+# Auth -- API key for POST /api/update (empty = no auth required, for dev)
+UPDATE_API_KEY = os.environ.get("UPDATE_API_KEY", "")
+
+# Rate limiting -- max requests per window per session
+RATE_LIMIT_DOWNLOADS = int(os.environ.get("RATE_LIMIT_DOWNLOADS", "10"))
+RATE_LIMIT_INFO = int(os.environ.get("RATE_LIMIT_INFO", "20"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
+
 # Quality -> yt-dlp format string mapping
 QUALITY_MAP = {
     "1080p": "bestvideo[height<=1080]+bestaudio/best",

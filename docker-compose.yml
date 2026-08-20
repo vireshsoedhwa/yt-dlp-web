@@ -7,6 +7,11 @@ services:
     image: redis:7-alpine
     container_name: ytdlp-redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   backend:
     build:
@@ -22,7 +27,8 @@ services:
       - SERVING_FLAG_TTL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
@@ -40,5 +46,6 @@ services:
       - SERVING_FLAG_TTL_SECONDS=3600
       - SESSION_DIR=/app/downloads/.session
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped

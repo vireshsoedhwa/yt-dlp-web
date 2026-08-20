@@ -38,8 +38,12 @@ describe("formatDuration", () => {
     expect(formatDuration(65)).toBe("1:05");
   });
 
-  it("should handle large durations", () => {
-    expect(formatDuration(3661)).toBe("61:01");
+  it("should format hours as H:MM:SS", () => {
+    expect(formatDuration(3661)).toBe("1:01:01");
+  });
+
+  it("should format multi-hour durations", () => {
+    expect(formatDuration(7322)).toBe("2:02:02");
   });
 });
 

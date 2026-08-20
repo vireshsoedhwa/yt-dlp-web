@@ -26,6 +26,22 @@ def _validate_session_id(session_id: str) -> None:
         raise ValueError("Invalid session ID")
 
 
+def validate_filename(filename: str) -> str:
+    """Validate that a filename is safe (no path traversal). Returns basename.
+
+    Raises ValueError if the filename is empty, contains path separators,
+    or uses '..' traversal.
+    """
+    if not filename or not filename.strip():
+        raise ValueError("Invalid filename")
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise ValueError("Invalid filename")
+    basename = os.path.basename(filename)
+    if basename != filename:
+        raise ValueError("Invalid filename")
+    return basename
+
+
 def get_session_dir(session_id: str) -> str:
     """Return the directory path for a session's files."""
     _validate_session_id(session_id)
@@ -35,14 +51,8 @@ def get_session_dir(session_id: str) -> str:
 def get_session_file_path(session_id: str, filename: str) -> str:
     """Return the full path to a file in the session's directory."""
     _validate_session_id(session_id)
-
-    # Sanitize filename (same protection as files API)
-    if not filename or not filename.strip():
-        raise ValueError("Invalid filename")
-    if "/" in filename or "\\" in filename or ".." in filename:
-        raise ValueError("Invalid filename")
-
-    return os.path.join(SESSION_DIR, session_id, os.path.basename(filename))
+    basename = validate_filename(filename)
+    return os.path.join(SESSION_DIR, session_id, basename)
 
 
 def delete_session_file(session_id: str, filename: str) -> dict:

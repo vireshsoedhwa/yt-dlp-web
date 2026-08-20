@@ -33,6 +33,7 @@ from app.core.files_service import (
     delete_session_file,
     file_exists_for_session,
     get_file_size,
+    validate_filename,
 )
 
 router = APIRouter()
@@ -40,14 +41,10 @@ router = APIRouter()
 
 def _safe_filename(filename: str) -> str:
     """Sanitize filename to prevent path traversal. Returns basename."""
-    if not filename or not filename.strip():
-        raise HTTPException(status_code=400, detail="Filename is required")
-    if "/" in filename or "\\" in filename or ".." in filename:
+    try:
+        return validate_filename(filename)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    basename = os.path.basename(filename)
-    if basename != filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    return basename
 
 
 def _require_session(x_session_id: str | None) -> str:

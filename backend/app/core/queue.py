@@ -149,3 +149,16 @@ def clear_serving_flag(session_id: str, filename: str) -> None:
 def is_file_being_served(session_id: str, filename: str) -> bool:
     """Check if a file is currently being downloaded (serving flag is set)."""
     return get_redis().exists(_serving_flag_key(session_id, filename)) > 0
+
+
+# --- Rate limiting ---
+
+def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> bool:
+    """Check if a request is within the rate limit.
+    Uses Redis INCR with a sliding window.
+    Returns True if allowed, False if rate limited."""
+    redis = get_redis()
+    count = redis.incr(key)
+    if count == 1:
+        redis.expire(key, window_seconds)
+    return count <= max_requests

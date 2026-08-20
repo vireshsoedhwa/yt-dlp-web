@@ -5,10 +5,18 @@ Mocks extract_info so no network calls are made.
 """
 
 from unittest.mock import patch
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_rate_limit():
+    """Auto-mock rate limiting so tests don't need Redis."""
+    with patch("app.api.info.check_rate_limit", return_value=True):
+        yield
 
 
 def test_get_info_success(fake_yt_info):

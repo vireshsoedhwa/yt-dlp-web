@@ -18,12 +18,14 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { getJobStatus, downloadFile, ApiError } from "../lib/api";
+import { POLL_INTERVAL_MS, CARD_TTL_MS } from "../lib/constants";
 import type { JobInfo, JobStatus as StatusType } from "../types";
 
 interface JobStatusCardProps {
   jobId: string;
   url: string;
   onDismiss: (jobId: string) => void;
+  onStatusChange?: (status: StatusType) => void;
 }
 
 /**
@@ -38,8 +40,6 @@ export function formatCountdown(ms: number): string {
   return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-const POLL_INTERVAL_MS = 2000;
-
 const STATUS_STYLES: Record<StatusType, string> = {
   queued: "bg-yellow-900 text-yellow-200 border-yellow-700",
   started: "bg-blue-900 text-blue-200 border-blue-700",
@@ -47,7 +47,7 @@ const STATUS_STYLES: Record<StatusType, string> = {
   failed: "bg-red-900 text-red-200 border-red-700",
 };
 
-export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
+export function JobStatusCard({ jobId, url, onDismiss, onStatusChange }: JobStatusCardProps) {
   const [job, setJob] = useState<JobInfo | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -64,6 +64,9 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
       jobRef.current = info;
       setJob(info);
       setPollError(null);
+      if (info.status === "finished" || info.status === "failed") {
+        onStatusChange?.(info.status);
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setPollError(err.message);
@@ -71,7 +74,7 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
         setPollError("Failed to fetch job status");
       }
     }
-  }, [jobId]);
+  }, [jobId, onStatusChange]);
 
   useEffect(() => {
     // Fetch immediately on mount
@@ -105,8 +108,6 @@ export function JobStatusCard({ jobId, url, onDismiss }: JobStatusCardProps) {
       setRemainingMs(null);
       return;
     }
-
-    const CARD_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
     const updateRemaining = () => {
       const ended = new Date(endedAt).getTime();

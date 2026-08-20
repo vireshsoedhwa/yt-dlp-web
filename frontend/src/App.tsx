@@ -8,15 +8,13 @@
  *   4. User can dismiss jobs and start over
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { UrlInput } from "./components/UrlInput";
 import { VideoInfoCard, type DownloadOptions } from "./components/VideoInfoCard";
 import { JobStatusCard } from "./components/JobStatusCard";
 import { ErrorMessage } from "./components/ErrorMessage";
-import { fetchVideoInfo, startDownload, getJobStatus, getJobs, dismissJob, ApiError } from "./lib/api";
-import type { VideoInfo } from "./types";
-
-const POLL_INTERVAL_MS = 2000;
+import { fetchVideoInfo, startDownload, getJobs, dismissJob, ApiError } from "./lib/api";
+import type { VideoInfo, JobStatus } from "./types";
 
 interface ActiveJob {
   jobId: string;
@@ -30,14 +28,6 @@ export function App() {
   const [currentUrl, setCurrentUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ActiveJob[]>([]);
-
-  // Ref to track if the component is still mounted — allows the polling
-  // loop in handleDownload to exit early if the user navigates away.
-  const downloadActiveRef = useRef(true);
-  useEffect(() => {
-    downloadActiveRef.current = true;
-    return () => { downloadActiveRef.current = false; };
-  }, []);
 
   useEffect(() => {
     getJobs()
@@ -88,34 +78,22 @@ export function App() {
           }
           return [...prev, { jobId: res.job_id, url: currentUrl }];
         });
-
-        // Poll until the job reaches a terminal state.
-        // This keeps the download button disabled for the entire duration
-        // of the actual yt-dlp download, preventing double-clicks from
-        // enqueuing redundant jobs.
-        const jobId = res.job_id;
-        while (downloadActiveRef.current) {
-          try {
-            const info = await getJobStatus(jobId);
-            if (info.status === "finished" || info.status === "failed") {
-              break;
-            }
-          } catch {
-            // Polling error — keep waiting, JobStatusCard shows its own errors
-          }
-          if (!downloadActiveRef.current) break; // unmounted or cancelled
-          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-        }
+        // downloading state is cleared by onStatusChange callback from JobStatusCard
       } catch (err) {
         setError(
           err instanceof ApiError ? err.message : "Failed to start download",
         );
-      } finally {
         setDownloading(false);
       }
     },
     [videoInfo, currentUrl],
   );
+
+  const handleStatusChange = useCallback((status: JobStatus) => {
+    if (status === "finished" || status === "failed") {
+      setDownloading(false);
+    }
+  }, []);
 
   const handleDismissJob = useCallback(async (jobId: string) => {
     setJobs((prev) => prev.filter((j) => j.jobId !== jobId));
@@ -162,6 +140,7 @@ export function App() {
                 jobId={job.jobId}
                 url={job.url}
                 onDismiss={handleDismissJob}
+                onStatusChange={handleStatusChange}
               />
             ))}
           </div>

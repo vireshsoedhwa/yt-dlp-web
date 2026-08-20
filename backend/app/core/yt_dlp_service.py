@@ -25,6 +25,7 @@ from app.core.config import (
     QUALITY_MAP,
     AUDIO_FORMAT,
 )
+from app.core.files_service import _validate_session_id
 
 # Shared yt-dlp options that help with YouTube's anti-bot measures.
 # These are applied to both extract_info and download_video.
@@ -91,6 +92,10 @@ def download_video(
     RQ stores this as the job result, retrievable via job.result once the
     job is finished.
     """
+    # Validate session ID to prevent path traversal before building output path
+    if session_id:
+        _validate_session_id(session_id)
+
     fmt = AUDIO_FORMAT if audio_only else QUALITY_MAP.get(quality, QUALITY_MAP["1080p"])
     suffix = "audio" if audio_only else quality
 
@@ -137,6 +142,7 @@ def download_video(
     # - Deduplicate via seen_files set
     downloaded_files: list[str] = []
     seen_files: set[str] = set()
+    video_meta: dict = {}
 
     def _capture_file(filepath: str | None) -> None:
         if filepath and filepath not in seen_files:
@@ -147,6 +153,12 @@ def download_video(
     def _progress_hook(d: dict) -> None:
         if d.get("status") == "finished":
             _capture_file(d.get("filepath") or d.get("filename"))
+            # Capture metadata from info_dict (available in progress hooks)
+            info = d.get("info_dict")
+            if info and not video_meta:
+                video_meta["title"] = info.get("title", "")
+                video_meta["thumbnail"] = info.get("thumbnail")
+                video_meta["uploader"] = info.get("uploader")
 
     def _post_hook(filepath: str) -> None:
         _capture_file(filepath)
@@ -175,20 +187,10 @@ def download_video(
         for filename in downloaded_files:
             register_file_for_session(session_id, filename)
 
-    # Fetch video metadata (title, thumbnail, uploader) for the job result.
-    # This is a lightweight extract_info call (skip_download=True) that adds
-    # ~1-2s after the download completes. Non-critical — if it fails, the
-    # card falls back to showing the URL only.
-    video_title = ""
-    thumbnail_url = None
-    uploader = None
-    try:
-        meta = extract_info(url)
-        video_title = meta.get("title", "")
-        thumbnail_url = meta.get("thumbnail")
-        uploader = meta.get("uploader")
-    except Exception:
-        pass
+    # Use metadata captured from progress hooks (no extra network call)
+    video_title = video_meta.get("title", "")
+    thumbnail_url = video_meta.get("thumbnail")
+    uploader = video_meta.get("uploader")
 
     return {
         "status": "completed",

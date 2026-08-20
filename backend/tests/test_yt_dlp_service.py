@@ -14,11 +14,12 @@ from unittest.mock import patch, MagicMock, call
 from app.core.config import QUALITY_MAP, AUDIO_FORMAT, DEFAULT_OUTPUT_TEMPLATE
 
 
-def _make_fake_ydl(extract_info_return=None, fire_hook=True):
+def _make_fake_ydl(extract_info_return=None, fire_hook=True, meta=None):
     """Create a MagicMock that works as a context manager.
 
     By default, the download mock fires a progress hook so that download_video
     captures a file. Set fire_hook=False to simulate a no-hook scenario.
+    Pass meta=dict to include info_dict in the progress hook (for metadata tests).
     """
     ydl = MagicMock()
     ydl.__enter__.return_value = ydl
@@ -33,8 +34,11 @@ def _make_fake_ydl(extract_info_return=None, fire_hook=True):
                 opts = call_obj[0][0]
                 if isinstance(opts, dict) and "progress_hooks" in opts:
                     hook = opts["progress_hooks"][0]
-                    hook({"status": "finished",
-                          "filepath": "/app/downloads/.session/test-session/Test [abc123]_1080p.mp4"})
+                    hook_data = {"status": "finished",
+                          "filepath": "/app/downloads/.session/test-session/Test [abc123]_1080p.mp4"}
+                    if meta is not None:
+                        hook_data["info_dict"] = meta
+                    hook(hook_data)
                     break
         ydl.download.side_effect = fake_download
 
@@ -433,8 +437,7 @@ def test_download_video_result_includes_quality_and_format():
 
 
 def test_download_video_result_includes_title_and_thumbnail():
-    """download_video result should include title, thumbnail, and uploader from extract_info."""
-    fake_ydl = _make_fake_ydl()
+    """download_video result should include title, thumbnail, and uploader from progress hook info_dict."""
     fake_meta = {
         "title": "My Test Video",
         "uploader": "Test Channel",
@@ -442,11 +445,11 @@ def test_download_video_result_includes_title_and_thumbnail():
         "thumbnail": "https://example.com/thumb.jpg",
         "formats": [],
     }
+    fake_ydl = _make_fake_ydl(meta=fake_meta)
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
          patch("app.core.queue.register_file_for_session"), \
-         patch("os.path.isfile", return_value=True), \
-         patch("app.core.yt_dlp_service.extract_info", return_value=fake_meta):
+         patch("os.path.isfile", return_value=True):
         from app.core.yt_dlp_service import download_video
         result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
 
@@ -455,14 +458,13 @@ def test_download_video_result_includes_title_and_thumbnail():
     assert result["uploader"] == "Test Channel"
 
 
-def test_download_video_handles_extract_info_failure():
-    """download_video should not crash if extract_info fails — title is empty, thumbnail is None."""
-    fake_ydl = _make_fake_ydl()
+def test_download_video_handles_missing_metadata():
+    """download_video should return empty metadata when hooks don't provide info_dict."""
+    fake_ydl = _make_fake_ydl()  # No meta, so no info_dict in hook
 
     with patch("app.core.yt_dlp_service.yt_dlp.YoutubeDL", return_value=fake_ydl), \
          patch("app.core.queue.register_file_for_session"), \
-         patch("os.path.isfile", return_value=True), \
-         patch("app.core.yt_dlp_service.extract_info", side_effect=Exception("Network error")):
+         patch("os.path.isfile", return_value=True):
         from app.core.yt_dlp_service import download_video
         result = download_video("https://example.com/video", quality="1080p", session_id="sess-1")
 

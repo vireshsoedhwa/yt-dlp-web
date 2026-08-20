@@ -7,6 +7,7 @@ All POST /api/download tests include X-Session-ID header.
 
 from unittest.mock import patch, MagicMock
 from datetime import datetime
+import pytest
 from rq.exceptions import NoSuchJobError
 from fastapi.testclient import TestClient
 from app.main import app
@@ -14,6 +15,13 @@ from app.main import app
 client = TestClient(app)
 
 SESSION_HEADERS = {"X-Session-ID": "test-session-123"}
+
+
+@pytest.fixture(autouse=True)
+def mock_rate_limit():
+    """Auto-mock rate limiting so tests don't need Redis."""
+    with patch("app.api.download.check_rate_limit", return_value=True):
+        yield
 
 
 # --- POST /api/download ---

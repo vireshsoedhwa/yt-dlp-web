@@ -27,7 +27,10 @@ from app.core.queue import (
     register_job_for_session,
     get_jobs_for_session,
     clear_job_for_session,
+    check_rate_limit,
 )
+from app.core.config import RATE_LIMIT_DOWNLOADS, RATE_LIMIT_WINDOW_SECONDS
+from app.core.files_service import _validate_session_id
 from app.core.yt_dlp_service import download_video
 
 router = APIRouter()
@@ -45,6 +48,20 @@ def start_download(
     # Session ID is required for file isolation
     if not x_session_id:
         raise HTTPException(status_code=400, detail="X-Session-ID header required")
+
+    # Validate session ID format (prevent path traversal)
+    try:
+        _validate_session_id(x_session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    # Rate limit per session
+    if not check_rate_limit(
+        f"ytdlp:ratelimit:dl:{x_session_id}",
+        RATE_LIMIT_DOWNLOADS,
+        RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again later.")
 
     # Dedup check: is there already an active job for this URL+quality in this session?
     existing_job_id = get_active_job_for_session(x_session_id, url, quality)

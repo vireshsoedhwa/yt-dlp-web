@@ -50,6 +50,7 @@ def test_purge_deletes_old_files():
              patch("app.purger.get_files_for_session", return_value=["old_video.mp4"]), \
              patch("app.purger.clear_file_for_session"), \
              patch("app.purger.clear_all_files_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False), \
              patch("app.purger.clear_all_jobs_for_session"):
             result = _purge_all_sessions(max_age_hours=3)
 
@@ -92,6 +93,7 @@ def test_purge_removes_empty_session_dirs():
              patch("app.purger.get_files_for_session", return_value=["old_video.mp4"]), \
              patch("app.purger.clear_file_for_session"), \
              patch("app.purger.clear_all_files_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False), \
              patch("app.purger.clear_all_jobs_for_session"):
             _purge_all_sessions(max_age_hours=3)
 
@@ -114,6 +116,7 @@ def test_purge_keeps_non_empty_session_dirs():
              patch("app.purger.get_files_for_session", return_value=["old_video.mp4", "new_video.mp4"]), \
              patch("app.purger.clear_file_for_session"), \
              patch("app.purger.clear_all_files_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False), \
              patch("app.purger.clear_all_jobs_for_session"):
             _purge_all_sessions(max_age_hours=3)
 
@@ -134,6 +137,7 @@ def test_purge_clears_redis_mappings():
 
         with patch("app.purger.SESSION_DIR", os.path.join(tmpdir, ".session")), \
              patch("app.purger.get_files_for_session", return_value=["old_video.mp4"]), \
+             patch("app.purger.is_file_being_served", return_value=False), \
              patch("app.purger.clear_file_for_session") as mock_clear_file, \
              patch("app.purger.clear_all_files_for_session") as mock_clear_all_files, \
              patch("app.purger.clear_all_jobs_for_session") as mock_clear_jobs:
@@ -157,6 +161,7 @@ def test_purge_catches_orphaned_files():
         with patch("app.purger.SESSION_DIR", os.path.join(tmpdir, ".session")), \
              patch("app.purger.get_files_for_session", return_value=[]), \
              patch("app.purger.clear_file_for_session"), \
+             patch("app.purger.is_file_being_served", return_value=False), \
              patch("app.purger.clear_all_files_for_session"), \
              patch("app.purger.clear_all_jobs_for_session"):
             result = _purge_all_sessions(max_age_hours=3)

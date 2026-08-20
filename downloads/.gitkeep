@@ -1,0 +1,2 @@
+# This directory stores per-session downloaded files.
+# It is mounted as a volume in docker-compose for backend and worker.

@@ -75,3 +75,52 @@ def test_post_update_unexpected_exception_returns_500():
 
     assert response.status_code == 500
     assert "Unexpected" in response.json()["detail"]
+
+
+# --- POST /api/update -- API key auth ---
+
+def test_post_update_with_correct_api_key():
+    """POST /api/update with correct API key should return 200."""
+    fake_result = {
+        "status": "success",
+        "old_version": "2026.06.09",
+        "new_version": "2026.07.04",
+        "stdout": "Successfully installed yt-dlp-2026.07.04",
+    }
+    with patch("app.api.update.UPDATE_API_KEY", "secret-key"), \
+         patch("app.api.update.update_yt_dlp", return_value=fake_result):
+        response = client.post("/api/update", headers={"X-API-Key": "secret-key"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+
+def test_post_update_with_wrong_api_key():
+    """POST /api/update with wrong API key should return 403."""
+    with patch("app.api.update.UPDATE_API_KEY", "secret-key"):
+        response = client.post("/api/update", headers={"X-API-Key": "wrong-key"})
+
+    assert response.status_code == 403
+
+
+def test_post_update_without_api_key_when_required():
+    """POST /api/update without API key should return 403 when UPDATE_API_KEY is set."""
+    with patch("app.api.update.UPDATE_API_KEY", "secret-key"):
+        response = client.post("/api/update")
+
+    assert response.status_code == 403
+
+
+def test_post_update_no_auth_when_key_unset():
+    """POST /api/update should work without API key when UPDATE_API_KEY is empty."""
+    fake_result = {
+        "status": "success",
+        "old_version": "2026.06.09",
+        "new_version": "2026.07.04",
+        "stdout": "Successfully installed yt-dlp-2026.07.04",
+    }
+    with patch("app.api.update.UPDATE_API_KEY", ""), \
+         patch("app.api.update.update_yt_dlp", return_value=fake_result):
+        response = client.post("/api/update")
+
+    assert response.status_code == 200
