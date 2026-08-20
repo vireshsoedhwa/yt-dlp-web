@@ -19,13 +19,17 @@ services:
       dockerfile: Dockerfile
     container_name: ytdlp-backend
     environment:
-      - DOWNLOAD_DIR=/app/downloads
-      - REDIS_URL=redis://redis:6379/0
-      - PURGE_MAX_AGE_HOURS=3
-      - PURGE_INTERVAL_SECONDS=3600
-      - JOB_CARD_TTL_HOURS=2
-      - SERVING_FLAG_TTL_SECONDS=3600
-      - SESSION_DIR=/app/downloads/.session
+      - DOWNLOAD_DIR=${DOWNLOAD_DIR:-/app/downloads}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PURGE_MAX_AGE_HOURS=${PURGE_MAX_AGE_HOURS:-3}
+      - PURGE_INTERVAL_SECONDS=${PURGE_INTERVAL_SECONDS:-3600}
+      - JOB_CARD_TTL_HOURS=${JOB_CARD_TTL_HOURS:-2}
+      - SERVING_FLAG_TTL_SECONDS=${SERVING_FLAG_TTL_SECONDS:-3600}
+      - SESSION_DIR=${SESSION_DIR:-/app/downloads/.session}
+      - UPDATE_API_KEY=${UPDATE_API_KEY:-}
+      - RATE_LIMIT_DOWNLOADS=${RATE_LIMIT_DOWNLOADS:-10}
+      - RATE_LIMIT_INFO=${RATE_LIMIT_INFO:-20}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
     depends_on:
       redis:
         condition: service_healthy
@@ -38,13 +42,17 @@ services:
     container_name: ytdlp-worker
     command: ["python", "-m", "app.worker"]
     environment:
-      - DOWNLOAD_DIR=/app/downloads
-      - REDIS_URL=redis://redis:6379/0
-      - PURGE_MAX_AGE_HOURS=3
-      - PURGE_INTERVAL_SECONDS=3600
-      - JOB_CARD_TTL_HOURS=2
-      - SERVING_FLAG_TTL_SECONDS=3600
-      - SESSION_DIR=/app/downloads/.session
+      - DOWNLOAD_DIR=${DOWNLOAD_DIR:-/app/downloads}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PURGE_MAX_AGE_HOURS=${PURGE_MAX_AGE_HOURS:-3}
+      - PURGE_INTERVAL_SECONDS=${PURGE_INTERVAL_SECONDS:-3600}
+      - JOB_CARD_TTL_HOURS=${JOB_CARD_TTL_HOURS:-2}
+      - SERVING_FLAG_TTL_SECONDS=${SERVING_FLAG_TTL_SECONDS:-3600}
+      - SESSION_DIR=${SESSION_DIR:-/app/downloads/.session}
+      - UPDATE_API_KEY=${UPDATE_API_KEY:-}
+      - RATE_LIMIT_DOWNLOADS=${RATE_LIMIT_DOWNLOADS:-10}
+      - RATE_LIMIT_INFO=${RATE_LIMIT_INFO:-20}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
     depends_on:
       redis:
         condition: service_healthy

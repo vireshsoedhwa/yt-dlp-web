@@ -19,10 +19,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Production (built assets, Caddy TLS, nginx API proxy)
 
 ```bash
+cp .env.example .env
+# Edit .env — set DOMAIN and UPDATE_API_KEY at minimum
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-- App: https://neckflix.top (Caddy with auto Let's Encrypt)
+- App: https://your-domain (Caddy with auto Let's Encrypt)
+- See `.env.example` for all configurable options
 
 ## Architecture
 

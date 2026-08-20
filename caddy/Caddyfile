@@ -1,4 +1,4 @@
-# Caddyfile — automatic HTTPS via Let's Encrypt for neckflix.top
+# Caddyfile — automatic HTTPS via Let's Encrypt.
 #
 # Caddy automatically:
 # - Obtains a TLS certificate from Let's Encrypt on first start
@@ -6,10 +6,11 @@
 # - Redirects HTTP -> HTTPS
 #
 # Prerequisites:
-# - Domain neckflix.top must point to this server's IP (A record)
-# - Ports 80 and 443 must be open (Caddy needs both for HTTP-01 challenge and HTTPS)
+# - DOMAIN env var set in .env (or docker-compose environment)
+# - DNS A record for your domain pointing to this server's IP
+# - Ports 80 and 443 open (Caddy needs both for HTTP-01 challenge and HTTPS)
 
-neckflix.top {
+{$DOMAIN} {
 	# All traffic -> frontend (nginx serves static assets and proxies /api/* to backend)
 	reverse_proxy frontend:3000
 }
