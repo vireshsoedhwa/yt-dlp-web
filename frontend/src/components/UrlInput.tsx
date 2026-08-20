@@ -34,6 +34,7 @@ export function UrlInput({
         type="text"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
+        onFocus={(e) => e.target.select()}
         placeholder={placeholder}
         disabled={loading}
         className="flex-1 px-4 py-3 rounded-lg bg-slate-900 border border-slate-600 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 min-w-0"

@@ -1,15 +1,19 @@
-# Production overrides — built assets, nginx, no source mounts.
+# Production overrides — built assets, Caddy with automatic HTTPS.
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
 # Access:
-#   App: http://localhost:8080 (nginx)
+#   App: https://neckflix.top (Caddy with auto Let's Encrypt)
+#
+# Prerequisites:
+#   - DNS A record for neckflix.top pointing to this server's IP
+#   - Ports 80 and 443 open on the firewall
 
 services:
   backend:
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - ./downloads:/app/downloads
 
@@ -22,17 +26,26 @@ services:
       context: ./frontend
       target: prod
     container_name: ytdlp-frontend
+    expose:
+      - "3000"
     depends_on:
       - backend
 
-  nginx:
-    image: nginx:alpine
-    container_name: ytdlp-nginx
+  caddy:
+    image: caddy:2-alpine
+    container_name: ytdlp-caddy
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - backend
       - frontend
     restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
