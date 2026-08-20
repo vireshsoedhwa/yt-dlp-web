@@ -80,7 +80,7 @@ describe("JobStatusCard", () => {
     mockGetJobStatus.mockResolvedValue(
       makeJob({
         status: "finished",
-        result: { status: "completed", url: "https://example.com", format: "best" },
+        result: { status: "completed", url: "https://example.com", format: "best", files: [] },
         ended_at: "2025-01-01T12:01:00",
       }),
     );
@@ -243,7 +243,7 @@ describe("JobStatusCard", () => {
 
   it("should not show polling indicator when job is finished", async () => {
     mockGetJobStatus.mockResolvedValue(
-      makeJob({ status: "finished", result: { status: "completed", url: "", format: "" } }),
+      makeJob({ status: "finished", result: { status: "completed", url: "", format: "", files: [] } }),
     );
     render(
       <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
@@ -379,7 +379,7 @@ describe("JobStatusCard", () => {
     mockGetJobStatus.mockResolvedValue(
       makeJob({
         status: "finished",
-        result: { status: "completed", url: "https://example.com", format: "best" },
+        result: { status: "completed", url: "https://example.com", format: "best", files: [] },
       }),
     );
 
@@ -410,7 +410,7 @@ describe("JobStatusCard", () => {
       makeJob({
         status: "finished",
         ended_at: now.toISOString(),
-        result: { status: "completed", url: "https://example.com", format: "best" },
+        result: { status: "completed", url: "https://example.com", format: "best", files: [] },
       }),
     );
 
@@ -442,7 +442,7 @@ describe("JobStatusCard", () => {
     mockGetJobStatus.mockResolvedValue(
       makeJob({
         status: "finished",
-        result: { status: "completed", url: "https://example.com", format: "best" },
+        result: { status: "completed", url: "https://example.com", format: "best", files: [] },
       }),
     );
     const onStatusChange = vi.fn();
@@ -490,7 +490,7 @@ describe("JobStatusCard", () => {
       makeJob({
         status: "finished",
         ended_at: threeHoursAgo,
-        result: { status: "completed", url: "https://example.com", format: "best" },
+        result: { status: "completed", url: "https://example.com", format: "best", files: [] },
       }),
     );
 

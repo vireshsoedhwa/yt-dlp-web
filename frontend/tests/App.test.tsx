@@ -374,7 +374,7 @@ describe("App", () => {
 
   it("test_restores_jobs_on_mount", async () => {
     mockGetJobs.mockResolvedValue([
-      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null },
+      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null, ended_at: "2025-01-01T12:01:00" },
     ]);
 
     render(<App />);
@@ -386,7 +386,7 @@ describe("App", () => {
 
   it("test_dismiss_job_calls_backend", async () => {
     mockGetJobs.mockResolvedValue([
-      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null },
+      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null, ended_at: "2025-01-01T12:01:00" },
     ]);
     mockDismissJob.mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -407,7 +407,7 @@ describe("App", () => {
 
   it("test_restored_jobs_show_correct_url", async () => {
     mockGetJobs.mockResolvedValue([
-      { job_id: "job42", url: "https://example.com/specific-url", status: "finished", result: null, error: null },
+      { job_id: "job42", url: "https://example.com/specific-url", status: "finished", result: null, error: null, ended_at: "2025-01-01T12:01:00" },
     ]);
 
     render(<App />);
