@@ -11,7 +11,9 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /app
 
-# App code mounted via docker-compose volume for dev hot-reload
+# Copy app code (dev overrides with a volume mount for hot-reload)
+COPY app/ /app/app/
+
 EXPOSE 8000
 
 # Default command (dev uses --reload via docker-compose override)
