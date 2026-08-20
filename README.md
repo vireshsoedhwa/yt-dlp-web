@@ -156,6 +156,30 @@ npx vitest run
 
 **API key auth:** `POST /api/update` requires an `X-API-Key` header matching `UPDATE_API_KEY` when that environment variable is set. If unset, the endpoint is open (useful for dev).
 
+## Updating / Redeploying
+
+To deploy new changes on your VPS:
+
+```bash
+git pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+`--build` rebuilds changed images and Docker Compose only recreates containers whose images or config changed. Existing containers stay running until new ones are ready. Named volumes (`downloads`, `caddy_data`, `caddy_config`) are preserved.
+
+If you only updated `.env` (no code changes), skip `--build`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+For a clean rebuild (rare — stops and removes containers, volumes preserved):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
 ## Tech Stack
 
 **Backend:** Python 3.12, FastAPI, RQ (Redis Queue), yt-dlp, ffmpeg, Pydantic
