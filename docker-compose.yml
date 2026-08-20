@@ -30,6 +30,7 @@ services:
       - RATE_LIMIT_DOWNLOADS=${RATE_LIMIT_DOWNLOADS:-10}
       - RATE_LIMIT_INFO=${RATE_LIMIT_INFO:-20}
       - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - COOKIES_FILE=${COOKIES_FILE:-}
     depends_on:
       redis:
         condition: service_healthy
@@ -53,6 +54,7 @@ services:
       - RATE_LIMIT_DOWNLOADS=${RATE_LIMIT_DOWNLOADS:-10}
       - RATE_LIMIT_INFO=${RATE_LIMIT_INFO:-20}
       - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - COOKIES_FILE=${COOKIES_FILE:-}
     depends_on:
       redis:
         condition: service_healthy

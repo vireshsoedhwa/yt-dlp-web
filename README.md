@@ -193,6 +193,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 - In dev, `node_modules` lives in a named Docker volume so it survives container restarts
 - yt-dlp is pinned to `>=2026.07.04` in requirements.txt. When YouTube changes anti-bot measures and downloads start failing with 403, use `POST /api/update` to self-upgrade yt-dlp inside the running container without rebuilding
 - yt-dlp uses the `android` player client (with `web` fallback) and a realistic User-Agent header to avoid 403 Forbidden errors
+- Cookie support: if YouTube requires sign-in, export cookies from a logged-in browser session (Netscape format) to `cookies.txt` in the project root, set `COOKIES_FILE=/app/cookies.txt` in `.env`, and redeploy. The file is mounted read-only into the backend and worker containers
 - Download archive: yt-dlp maintains a `.ytdlp-archive.txt` file recording video IDs to skip re-downloads
 - Dedup: Redis URL-to-job mapping prevents duplicate concurrent downloads of the same URL (MD5 hash, 1h TTL)
 - Session isolation: frontend generates a UUID stored in localStorage, sent as `X-Session-ID` header. Backend validates the session ID (alphanumeric + hyphens only) and uses it as a namespace key to isolate files per session, preventing path traversal

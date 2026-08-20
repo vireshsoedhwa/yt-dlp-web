@@ -24,6 +24,7 @@ from app.core.config import (
     DEFAULT_OUTPUT_TEMPLATE,
     QUALITY_MAP,
     AUDIO_FORMAT,
+    COOKIES_FILE,
 )
 from app.core.files_service import _validate_session_id
 
@@ -47,6 +48,10 @@ _BASE_YDL_OPTS: dict = {
         ),
     },
 }
+
+# Add cookies file for YouTube authentication if configured
+if COOKIES_FILE:
+    _BASE_YDL_OPTS["cookiefile"] = COOKIES_FILE
 
 
 def get_version() -> str:

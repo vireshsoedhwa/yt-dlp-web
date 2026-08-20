@@ -20,6 +20,9 @@ downloads/*
 .env
 .env.local
 
+# Cookies (may contain session tokens)
+cookies.txt
+
 # IDE
 .vscode/
 .idea/

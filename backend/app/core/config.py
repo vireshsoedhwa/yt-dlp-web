@@ -28,6 +28,10 @@ SESSION_DIR = os.environ.get("SESSION_DIR", f"{DOWNLOAD_DIR}/.session")
 # Auth -- API key for POST /api/update (empty = no auth required, for dev)
 UPDATE_API_KEY = os.environ.get("UPDATE_API_KEY", "")
 
+# Cookies -- path to Netscape-format cookies file for YouTube authentication
+# Empty string = no cookies (default)
+COOKIES_FILE = os.environ.get("COOKIES_FILE", "")
+
 # Rate limiting -- max requests per window per session
 RATE_LIMIT_DOWNLOADS = int(os.environ.get("RATE_LIMIT_DOWNLOADS", "10"))
 RATE_LIMIT_INFO = int(os.environ.get("RATE_LIMIT_INFO", "20"))
