@@ -14,12 +14,12 @@ services:
   backend:
     volumes:
       - downloads:/app/downloads
-      - ./cookies.txt:/app/cookies.txt:ro
+      - ./cookies.txt:/app/cookies.txt
 
   worker:
     volumes:
       - downloads:/app/downloads
-      - ./cookies.txt:/app/cookies.txt:ro
+      - ./cookies.txt:/app/cookies.txt
 
   frontend:
     build:
