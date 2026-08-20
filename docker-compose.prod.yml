@@ -13,11 +13,11 @@
 services:
   backend:
     volumes:
-      - ./downloads:/app/downloads
+      - downloads:/app/downloads
 
   worker:
     volumes:
-      - ./downloads:/app/downloads
+      - downloads:/app/downloads
 
   frontend:
     build:
@@ -46,3 +46,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  downloads:
