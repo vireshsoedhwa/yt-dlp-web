@@ -10,13 +10,6 @@
 # - Ports 80 and 443 must be open (Caddy needs both for HTTP-01 challenge and HTTPS)
 
 neckflix.top {
-	# API requests -> backend (FastAPI + uvicorn)
-	handle /api/* {
-		reverse_proxy backend:8000
-	}
-
-	# Everything else -> frontend (nginx serving built Vite assets)
-	handle {
-		reverse_proxy frontend:3000
-	}
+	# All traffic -> frontend (nginx serves static assets and proxies /api/* to backend)
+	reverse_proxy frontend:3000
 }

@@ -16,13 +16,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 - Backend API: http://localhost:8000
 - Redis: localhost:6379
 
-### Production (built assets, nginx, optimized)
+### Production (built assets, Caddy TLS, nginx API proxy)
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-- App: http://localhost:8080 (nginx)
+- App: https://neckflix.top (Caddy with auto Let's Encrypt)
 
 ## Architecture
 
@@ -42,10 +42,10 @@ docker-compose.yml (base) + docker-compose.dev.yml (overrides)
 ```
 docker-compose.yml (base) + docker-compose.prod.yml (overrides)
 ├── redis        —      — RQ broker
-├── backend      :8000  — FastAPI + uvicorn (no reload, no source mount)
+├── backend      —      — FastAPI + uvicorn (internal only, not exposed)
 ├── worker       —      — RQ worker
-├── frontend     :3000  — nginx serving built Vite assets (multi-stage build)
-└── nginx        :8080  — reverse proxy (entry point)
+├── frontend     :3000  — nginx serving built Vite assets + reverse-proxy /api/* to backend
+└── caddy        :80/:443 — TLS termination, proxies everything to frontend
 ```
 
 ## Structure
@@ -54,7 +54,9 @@ docker-compose.yml (base) + docker-compose.prod.yml (overrides)
 yt-dlp-web/
 ├── docker-compose.yml              # Base: redis, backend, worker
 ├── docker-compose.dev.yml          # Dev: Vite HMR, source mounts, exposed ports
-├── docker-compose.prod.yml         # Prod: nginx, built assets, no mounts
+├── docker-compose.prod.yml         # Prod: caddy, built assets, no mounts
+├── caddy/
+│   └── Caddyfile                  # TLS termination + reverse proxy to frontend
 ├── backend/
 │   ├── Dockerfile                  # Python 3.12 + ffmpeg + yt-dlp
 │   ├── requirements.txt            # yt-dlp + FastAPI + RQ + Redis
@@ -98,8 +100,8 @@ yt-dlp-web/
 │   │       ├── JobStatusCard.tsx   # Polling job status with badge
 │   │       └── ErrorMessage.tsx    # Inline error banner
 │   └── tests/                      # 71 tests (Vitest + Testing Library, all mocked)
-├── nginx/
-│   └── nginx.conf                  # Reverse proxy (prod): /api -> backend, / -> frontend
+├── caddy/
+│   └── Caddyfile                  # TLS termination + reverse proxy to frontend
 └── downloads/                      # Shared volume for downloaded videos
 ```
 
@@ -108,10 +110,10 @@ yt-dlp-web/
 | Service  | Dev Port | Prod Port | Purpose                              |
 |----------|----------|-----------|--------------------------------------|
 | redis    | 6379     | —         | Redis — RQ broker + job persistence  |
-| backend  | 8000     | 8000      | FastAPI — API server (enqueue jobs)  |
+| backend  | 8000     | —         | FastAPI — API server (internal only) |
 | worker   | —        | —         | RQ worker — runs yt-dlp downloads    |
-| frontend | 3000     | 3000      | Dev: Vite HMR / Prod: nginx static   |
-| nginx    | —        | 8080      | Reverse proxy (prod entry point)     |
+| frontend | 3000     | 3000      | Dev: Vite HMR / Prod: nginx + API proxy |
+| caddy    | —        | 80/443    | TLS termination (prod entry point)   |
 
 ## Running Tests
 

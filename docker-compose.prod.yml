@@ -12,8 +12,6 @@
 
 services:
   backend:
-    expose:
-      - "8000"
     volumes:
       - ./downloads:/app/downloads
 
@@ -42,7 +40,6 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - backend
       - frontend
     restart: unless-stopped
 
