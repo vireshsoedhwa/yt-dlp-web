@@ -203,3 +203,70 @@ def test_file_belongs_to_session_returns_false(fake_redis):
     from app.core.queue import file_belongs_to_session
     result = file_belongs_to_session("session-123", "nonexistent.mp4")
     assert result == 0  # falsy
+
+
+# --- Session-to-jobs mapping (Redis hash: job_id -> url) ---
+
+def test_register_job_for_session_adds_to_hash(fake_redis):
+    """register_job_for_session should call redis.hset."""
+    from app.core.queue import register_job_for_session
+    register_job_for_session("session-123", "job-1", "https://example.com/video")
+    fake_redis.hset.assert_called_once()
+    args = fake_redis.hset.call_args[0]
+    assert "session-123" in args[0]  # key contains session_id
+    assert args[1] == "job-1"  # field is job_id
+    assert args[2] == "https://example.com/video"  # value is url
+
+
+def test_get_jobs_for_session_returns_registered_jobs(fake_redis):
+    """get_jobs_for_session should return list of {job_id, url}."""
+    fake_redis.hgetall.return_value = {
+        b"job-1": b"https://example.com/video1",
+        b"job-2": b"https://example.com/video2",
+    }
+    from app.core.queue import get_jobs_for_session
+    result = get_jobs_for_session("session-123")
+    assert len(result) == 2
+    job_ids = [j["job_id"] for j in result]
+    assert "job-1" in job_ids
+    assert "job-2" in job_ids
+    for j in result:
+        assert j["url"].startswith("https://example.com/")
+
+
+def test_get_jobs_for_session_returns_empty_for_unknown_session(fake_redis):
+    """get_jobs_for_session should return empty list for unknown session."""
+    fake_redis.hgetall.return_value = {}
+    from app.core.queue import get_jobs_for_session
+    result = get_jobs_for_session("unknown-session")
+    assert result == []
+
+
+def test_clear_job_for_session_removes_one_job(fake_redis):
+    """clear_job_for_session should call redis.hdel."""
+    from app.core.queue import clear_job_for_session
+    clear_job_for_session("session-123", "job-1")
+    fake_redis.hdel.assert_called_once()
+    args = fake_redis.hdel.call_args[0]
+    assert "session-123" in args[0]
+    assert args[1] == "job-1"
+
+
+def test_clear_all_jobs_for_session_removes_all(fake_redis):
+    """clear_all_jobs_for_session should call redis.delete."""
+    from app.core.queue import clear_all_jobs_for_session
+    clear_all_jobs_for_session("session-123")
+    fake_redis.delete.assert_called_once()
+    key = fake_redis.delete.call_args[0][0]
+    assert "session-123" in key
+
+
+def test_get_jobs_for_session_decodes_bytes(fake_redis):
+    """get_jobs_for_session should decode bytes keys and values."""
+    fake_redis.hgetall.return_value = {b"job-abc": b"https://example.com/v"}
+    from app.core.queue import get_jobs_for_session
+    result = get_jobs_for_session("session-123")
+    assert result[0]["job_id"] == "job-abc"
+    assert isinstance(result[0]["job_id"], str)
+    assert result[0]["url"] == "https://example.com/v"
+    assert isinstance(result[0]["url"], str)

@@ -23,7 +23,8 @@ def test_start_download_enqueues_job(fake_queue, fake_job):
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
          patch("app.api.download.get_active_job_for_session", return_value=None), \
-         patch("app.api.download.set_active_job_for_session") as mock_set:
+         patch("app.api.download.set_active_job_for_session") as mock_set, \
+         patch("app.api.download.register_job_for_session") as mock_register:
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
             "quality": "1080p",
@@ -36,6 +37,10 @@ def test_start_download_enqueues_job(fake_queue, fake_job):
     assert data["status"] == "queued"
     # Verify dedup mapping was set
     mock_set.assert_called_once()
+    # Verify job was registered in session jobs hash
+    mock_register.assert_called_once_with(
+        "test-session-123", "abc12345", "https://example.com/video"
+    )
 
 
 def test_start_download_passes_quality_to_job(fake_queue, fake_job):
@@ -144,7 +149,8 @@ def test_start_download_dedup_different_quality_new_job(fake_queue, fake_job):
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
          patch("app.api.download.get_active_job_for_session", return_value=None), \
-         patch("app.api.download.set_active_job_for_session") as mock_set:
+         patch("app.api.download.set_active_job_for_session") as mock_set, \
+         patch("app.api.download.register_job_for_session"):
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
             "quality": "720p",
@@ -164,7 +170,8 @@ def test_start_download_creates_new_job_after_completion(fake_queue, fake_job):
          patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
          patch("app.api.download.clear_active_job_for_session") as mock_clear, \
-         patch("app.api.download.set_active_job_for_session") as mock_set:
+         patch("app.api.download.set_active_job_for_session") as mock_set, \
+         patch("app.api.download.register_job_for_session"):
         fake_job.get_status.return_value = "finished"
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
@@ -190,7 +197,8 @@ def test_start_download_creates_new_job_after_failure(fake_queue, fake_job):
          patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
          patch("app.api.download.clear_active_job_for_session") as mock_clear, \
-         patch("app.api.download.set_active_job_for_session") as mock_set:
+         patch("app.api.download.set_active_job_for_session") as mock_set, \
+         patch("app.api.download.register_job_for_session"):
         fake_job.get_status.return_value = "failed"
         response = client.post("/api/download", json={
             "url": "https://example.com/video",
@@ -209,7 +217,8 @@ def test_start_download_sets_dedup_mapping(fake_queue, fake_job):
     fake_queue.enqueue.return_value = fake_job
     with patch("app.api.download.get_queue", return_value=fake_queue), \
          patch("app.api.download.get_active_job_for_session", return_value=None), \
-         patch("app.api.download.set_active_job_for_session") as mock_set:
+         patch("app.api.download.set_active_job_for_session") as mock_set, \
+         patch("app.api.download.register_job_for_session"):
         client.post("/api/download", json={
             "url": "https://example.com/video",
             "quality": "720p",
@@ -349,3 +358,71 @@ def test_get_job_status_does_not_clear_dedup_while_in_progress():
 
     assert response.status_code == 200
     mock_clear.assert_not_called()
+
+
+# --- GET /api/jobs ---
+
+def test_list_jobs_returns_session_jobs(fake_job):
+    """GET /api/jobs should return jobs for the session with status."""
+    fake_job.get_status.return_value = "finished"
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "abc12345", "url": "https://example.com/video"},
+    ]), \
+         patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["job_id"] == "abc12345"
+    assert data["jobs"][0]["url"] == "https://example.com/video"
+    assert data["jobs"][0]["status"] == "finished"
+
+
+def test_list_jobs_returns_400_without_session_header():
+    """GET /api/jobs without X-Session-ID should return 400."""
+    response = client.get("/api/jobs")
+    assert response.status_code == 400
+
+
+def test_list_jobs_returns_empty_for_session_with_no_jobs():
+    """GET /api/jobs should return empty list for session with no jobs."""
+    with patch("app.api.download.get_jobs_for_session", return_value=[]):
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == {"jobs": []}
+
+
+def test_list_jobs_clears_expired_jobs():
+    """GET /api/jobs should clear jobs that no longer exist in Redis."""
+    with patch("app.api.download.get_jobs_for_session", return_value=[
+        {"job_id": "expired-job", "url": "https://example.com/old"},
+    ]), \
+         patch("app.api.download.Job.fetch", side_effect=NoSuchJobError), \
+         patch("app.api.download.clear_job_for_session") as mock_clear:
+        response = client.get("/api/jobs", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == {"jobs": []}
+    mock_clear.assert_called_once_with("test-session-123", "expired-job")
+
+
+# --- DELETE /api/jobs/{job_id} ---
+
+def test_dismiss_job_removes_from_session():
+    """DELETE /api/jobs/{job_id} should clear the job from the session."""
+    with patch("app.api.download.clear_job_for_session") as mock_clear:
+        response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["deleted"] == "abc12345"
+    mock_clear.assert_called_once_with("test-session-123", "abc12345")
+
+
+def test_dismiss_job_returns_400_without_session_header():
+    """DELETE /api/jobs/{job_id} without X-Session-ID should return 400."""
+    response = client.delete("/api/jobs/abc12345")
+    assert response.status_code == 400

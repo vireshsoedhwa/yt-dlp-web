@@ -91,3 +91,37 @@ def clear_all_files_for_session(session_id: str) -> None:
 def file_belongs_to_session(session_id: str, filename: str) -> bool:
     """Check if a filename is registered to a session."""
     return get_redis().sismember(_session_file_key(session_id), filename)
+
+
+# --- Session-to-jobs mapping (Redis hash: job_id -> url) ---
+
+def _session_jobs_key(session_id: str) -> str:
+    """Return the Redis key for a session's jobs hash."""
+    return f"ytdlp:session:{session_id}:jobs"
+
+
+def register_job_for_session(session_id: str, job_id: str, url: str) -> None:
+    """Store a job_id -> url mapping in the session's jobs hash."""
+    get_redis().hset(_session_jobs_key(session_id), job_id, url)
+
+
+def get_jobs_for_session(session_id: str) -> list[dict]:
+    """Return list of {job_id, url} for all jobs in the session."""
+    raw = get_redis().hgetall(_session_jobs_key(session_id))
+    return [
+        {
+            "job_id": k.decode() if isinstance(k, bytes) else k,
+            "url": v.decode() if isinstance(v, bytes) else v,
+        }
+        for k, v in raw.items()
+    ]
+
+
+def clear_job_for_session(session_id: str, job_id: str) -> None:
+    """Remove a job_id from the session's jobs hash."""
+    get_redis().hdel(_session_jobs_key(session_id), job_id)
+
+
+def clear_all_jobs_for_session(session_id: str) -> None:
+    """Delete the session's entire jobs hash."""
+    get_redis().delete(_session_jobs_key(session_id))

@@ -15,6 +15,8 @@ vi.mock("../src/lib/api", () => ({
   fetchVideoInfo: vi.fn(),
   startDownload: vi.fn(),
   getJobStatus: vi.fn(),
+  getJobs: vi.fn(),
+  dismissJob: vi.fn(),
   downloadFile: vi.fn(),
   listFiles: vi.fn(),
   getOrCreateSessionId: vi.fn(() => "test-session-id"),
@@ -30,11 +32,13 @@ vi.mock("../src/lib/api", () => ({
 }));
 
 import { App } from "../src/App";
-import { fetchVideoInfo, startDownload, getJobStatus, ApiError } from "../src/lib/api";
+import { fetchVideoInfo, startDownload, getJobStatus, getJobs, dismissJob, ApiError } from "../src/lib/api";
 
 const mockFetchVideoInfo = vi.mocked(fetchVideoInfo);
 const mockStartDownload = vi.mocked(startDownload);
 const mockGetJobStatus = vi.mocked(getJobStatus);
+const mockGetJobs = vi.mocked(getJobs);
+const mockDismissJob = vi.mocked(dismissJob);
 
 const mockInfo: VideoInfo = {
   title: "Test Video",
@@ -78,8 +82,12 @@ beforeEach(() => {
   mockFetchVideoInfo.mockReset();
   mockStartDownload.mockReset();
   mockGetJobStatus.mockReset();
+  mockGetJobs.mockReset();
+  mockDismissJob.mockReset();
   // Default: job is already finished so polling exits immediately
   mockGetJobStatus.mockResolvedValue(mockJobFinished);
+  // Default: no restored jobs
+  mockGetJobs.mockResolvedValue([]);
 });
 
 describe("App", () => {
@@ -362,5 +370,50 @@ describe("App", () => {
     const link = screen.getByText("yt-dlp");
     expect(link.tagName).toBe("A");
     expect(link).toHaveAttribute("href", "https://github.com/yt-dlp/yt-dlp");
+  });
+
+  it("test_restores_jobs_on_mount", async () => {
+    mockGetJobs.mockResolvedValue([
+      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null },
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("https://example.com/video")).toBeInTheDocument();
+    });
+  });
+
+  it("test_dismiss_job_calls_backend", async () => {
+    mockGetJobs.mockResolvedValue([
+      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null },
+    ]);
+    mockDismissJob.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Wait for restored job to appear
+    await waitFor(() => {
+      expect(screen.getByText("https://example.com/video")).toBeInTheDocument();
+    });
+
+    // Click dismiss button
+    await user.click(screen.getByLabelText("Dismiss job"));
+
+    await waitFor(() => {
+      expect(mockDismissJob).toHaveBeenCalledWith("job1");
+    });
+  });
+
+  it("test_restored_jobs_show_correct_url", async () => {
+    mockGetJobs.mockResolvedValue([
+      { job_id: "job42", url: "https://example.com/specific-url", status: "finished", result: null, error: null },
+    ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("https://example.com/specific-url")).toBeInTheDocument();
+    });
   });
 });

@@ -13,7 +13,7 @@ import { UrlInput } from "./components/UrlInput";
 import { VideoInfoCard, type DownloadOptions } from "./components/VideoInfoCard";
 import { JobStatusCard } from "./components/JobStatusCard";
 import { ErrorMessage } from "./components/ErrorMessage";
-import { fetchVideoInfo, startDownload, getJobStatus, ApiError } from "./lib/api";
+import { fetchVideoInfo, startDownload, getJobStatus, getJobs, dismissJob, ApiError } from "./lib/api";
 import type { VideoInfo } from "./types";
 
 const POLL_INTERVAL_MS = 2000;
@@ -37,6 +37,16 @@ export function App() {
   useEffect(() => {
     downloadActiveRef.current = true;
     return () => { downloadActiveRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    getJobs()
+      .then((restoredJobs) => {
+        setJobs(restoredJobs.map((j) => ({ jobId: j.job_id, url: j.url })));
+      })
+      .catch(() => {
+        // Silently fail — jobs just won't be restored
+      });
   }, []);
 
   const handleFetchInfo = useCallback(async (url: string) => {
@@ -107,8 +117,13 @@ export function App() {
     [videoInfo, currentUrl],
   );
 
-  const handleDismissJob = useCallback((jobId: string) => {
+  const handleDismissJob = useCallback(async (jobId: string) => {
     setJobs((prev) => prev.filter((j) => j.jobId !== jobId));
+    try {
+      await dismissJob(jobId);
+    } catch {
+      // Silently fail — job is already removed from UI
+    }
   }, []);
 
   return (

@@ -11,6 +11,8 @@ import {
   startDownload,
   getJobStatus,
   listFiles,
+  getJobs,
+  dismissJob,
   getOrCreateSessionId,
   ApiError,
 } from "../src/lib/api";
@@ -352,5 +354,80 @@ describe("listFiles", () => {
     });
 
     await expect(listFiles()).rejects.toThrow(ApiError);
+  });
+});
+
+describe("getJobs", () => {
+  it("test_getJobs_calls_correct_endpoint", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ jobs: [] }),
+    });
+
+    await getJobs();
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[0]).toContain("/api/jobs");
+    expect(callArgs[1].method).toBeUndefined();
+    const headers = callArgs[1].headers;
+    expect(headers["X-Session-ID"]).toBeDefined();
+  });
+
+  it("test_getJobs_returns_jobs_array", async () => {
+    const mockJobs = [
+      { job_id: "job1", url: "https://example.com/video", status: "finished", result: null, error: null },
+      { job_id: "job2", url: "https://example.com/video2", status: "queued", result: null, error: null },
+    ];
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ jobs: mockJobs }),
+    });
+
+    const result = await getJobs();
+
+    expect(result).toHaveLength(2);
+    expect(result[0].job_id).toBe("job1");
+    expect(result[0].url).toBe("https://example.com/video");
+    expect(result[1].job_id).toBe("job2");
+  });
+
+  it("test_getJobs_throws_on_error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: "Internal error" }),
+    });
+
+    await expect(getJobs()).rejects.toThrow(ApiError);
+  });
+});
+
+describe("dismissJob", () => {
+  it("test_dismissJob_calls_delete_endpoint", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+    });
+
+    await dismissJob("job123");
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[0]).toContain("/api/jobs/job123");
+    expect(callArgs[1].method).toBe("DELETE");
+    const headers = callArgs[1].headers;
+    expect(headers["X-Session-ID"]).toBeDefined();
+  });
+
+  it("test_dismissJob_throws_on_error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: "Job not found" }),
+    });
+
+    await expect(dismissJob("nonexistent")).rejects.toThrow(ApiError);
   });
 });

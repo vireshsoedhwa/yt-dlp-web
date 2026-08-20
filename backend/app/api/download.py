@@ -9,6 +9,8 @@ Features:
   in the same session, return its job_id instead of creating a duplicate
 - Session: X-Session-ID header associates files with the requesting browser
 - Cleanup: polling a finished/failed job clears the dedup mapping
+- Job restoration: GET /api/jobs returns all jobs for a session (for page refresh)
+- Job dismissal: DELETE /api/jobs/{job_id} removes a job from the session
 """
 
 from fastapi import APIRouter, HTTPException, Header
@@ -22,6 +24,9 @@ from app.core.queue import (
     get_active_job_for_session,
     set_active_job_for_session,
     clear_active_job_for_session,
+    register_job_for_session,
+    get_jobs_for_session,
+    clear_job_for_session,
 )
 from app.core.yt_dlp_service import download_video
 
@@ -49,6 +54,8 @@ def start_download(
             status = existing_job.get_status()
             if status in ("queued", "started"):
                 # Active job exists -- return it instead of creating a duplicate
+                # Re-register in session jobs hash (in case it was cleared)
+                register_job_for_session(x_session_id, existing_job_id, url)
                 return DownloadResponse(
                     job_id=existing_job_id,
                     status="already_queued",
@@ -74,6 +81,9 @@ def start_download(
 
     # Set dedup mapping
     set_active_job_for_session(x_session_id, url, quality, job.id)
+
+    # Register job in session jobs hash (for restoration on page refresh)
+    register_job_for_session(x_session_id, job.id, url)
 
     return DownloadResponse(
         job_id=job.id,
@@ -110,3 +120,44 @@ def get_job_status(job_id: str):
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "ended_at": job.ended_at.isoformat() if job.ended_at else None,
     }
+
+
+@router.get("/jobs")
+def list_jobs(x_session_id: str | None = Header(None)):
+    """List all jobs for the current session with their status."""
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="X-Session-ID header required")
+
+    jobs = get_jobs_for_session(x_session_id)
+    result = []
+    for job_info in jobs:
+        job_id = job_info["job_id"]
+        try:
+            job = Job.fetch(job_id, connection=get_redis())
+            status = job.get_status()
+            result.append({
+                "job_id": job_id,
+                "url": job_info["url"],
+                "status": status,
+                "result": job.result,
+                "error": str(job.exc_info) if job.exc_info else None,
+            })
+        except NoSuchJobError:
+            # Job expired from Redis — clear from session and skip
+            clear_job_for_session(x_session_id, job_id)
+
+    return {"jobs": result}
+
+
+@router.delete("/jobs/{job_id}")
+def dismiss_job(
+    job_id: str,
+    x_session_id: str | None = Header(None),
+):
+    """Dismiss a job from the session's job list."""
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="X-Session-ID header required")
+
+    clear_job_for_session(x_session_id, job_id)
+
+    return {"deleted": job_id}

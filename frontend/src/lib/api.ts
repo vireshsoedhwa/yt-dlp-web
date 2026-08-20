@@ -21,6 +21,7 @@ import type {
   DownloadResponse,
   JobInfo,
   FileInfo,
+  SessionJob,
 } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -119,6 +120,31 @@ export async function downloadFile(filename: string): Promise<Blob> {
     throw new ApiError(res.status, detail);
   }
   return res.blob();
+}
+
+/** GET /api/jobs — list all jobs for the current session. */
+export async function getJobs(): Promise<SessionJob[]> {
+  const res = await fetch(`${API_BASE}/api/jobs`, {
+    headers: _headers(),
+  });
+  if (!res.ok) {
+    const detail = await extractError(res);
+    throw new ApiError(res.status, detail);
+  }
+  const data = await res.json() as { jobs: SessionJob[] };
+  return data.jobs;
+}
+
+/** DELETE /api/jobs/{job_id} — dismiss a job from the session. */
+export async function dismissJob(jobId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
+    method: "DELETE",
+    headers: _headers(),
+  });
+  if (!res.ok) {
+    const detail = await extractError(res);
+    throw new ApiError(res.status, detail);
+  }
 }
 
 /** Extract error detail from a non-OK fetch response. */

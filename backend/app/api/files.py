@@ -23,6 +23,7 @@ from app.core.config import PURGE_MAX_AGE_HOURS
 from app.core.queue import (
     get_files_for_session,
     clear_file_for_session,
+    clear_all_jobs_for_session,
 )
 from app.core.files_service import (
     get_session_file_path,
@@ -186,6 +187,11 @@ def _purge_old_files(session_id: str, max_age_hours: int, delete: bool) -> dict:
             "size_mb": round(size / (1024 * 1024), 2),
             "age_hours": round(age_seconds / 3600, 2),
         })
+
+    # If all files were purged, clear the session's jobs hash too
+    # so stale jobs don't reappear on page refresh
+    if delete and not get_files_for_session(session_id):
+        clear_all_jobs_for_session(session_id)
 
     return {
         "purged": purged,

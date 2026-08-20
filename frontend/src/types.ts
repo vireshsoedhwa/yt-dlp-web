@@ -51,3 +51,11 @@ export interface FileInfo {
   size_bytes: number;
   size_mb: number;
 }
+
+export interface SessionJob {
+  job_id: string;
+  url: string;
+  status: JobStatus;
+  result: JobResult | null;
+  error: string | null;
+}
