@@ -159,7 +159,20 @@ def download_video(
             downloaded_files.append(basename)
 
     def _progress_hook(d: dict) -> None:
-        if d.get("status") == "finished":
+        if d.get("status") == "downloading":
+            from app.core.queue import set_job_progress
+            from rq import get_current_job
+            job = get_current_job()
+            if job:
+                set_job_progress(
+                    job.id,
+                    percentage=d.get("_percent_str", "0").strip(),
+                    speed=d.get("_speed_str", ""),
+                    eta=d.get("_eta_str", ""),
+                    downloaded_bytes=d.get("downloaded_bytes", 0),
+                    total_bytes=d.get("total_bytes") or d.get("total_bytes_estimate") or 0,
+                )
+        elif d.get("status") == "finished":
             _capture_file(d.get("filepath") or d.get("filename"))
             # Capture metadata from info_dict (available in progress hooks)
             info = d.get("info_dict")
@@ -167,6 +180,12 @@ def download_video(
                 video_meta["title"] = info.get("title", "")
                 video_meta["thumbnail"] = info.get("thumbnail")
                 video_meta["uploader"] = info.get("uploader")
+            # Clear progress data — download is done
+            from app.core.queue import clear_job_progress
+            from rq import get_current_job
+            job = get_current_job()
+            if job:
+                clear_job_progress(job.id)
 
     def _post_hook(filepath: str) -> None:
         _capture_file(filepath)

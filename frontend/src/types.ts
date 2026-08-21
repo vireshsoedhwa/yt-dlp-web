@@ -29,6 +29,14 @@ export interface DownloadResponse {
 
 export type JobStatus = "queued" | "started" | "finished" | "failed";
 
+export interface JobProgress {
+  percentage: string;
+  speed: string;
+  eta: string;
+  downloaded_bytes: number;
+  total_bytes: number;
+}
+
 export interface JobResult {
   status: string;
   url: string;
@@ -48,6 +56,7 @@ export interface JobInfo {
   enqueued_at: string | null;
   started_at: string | null;
   ended_at: string | null;
+  progress: JobProgress | null;
 }
 
 export interface FileInfo {

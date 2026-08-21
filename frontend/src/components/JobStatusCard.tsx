@@ -205,6 +205,21 @@ export function JobStatusCard({ jobId, url, onDismiss, onStatusChange }: JobStat
           <p className="text-xs text-slate-500 truncate" title={url}>
             {url}
           </p>
+          {status === "started" && job?.progress && (
+            <div className="mt-2">
+              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${job.progress.percentage}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                <span>{job.progress.percentage}%</span>
+                {job.progress.speed && <span>{job.progress.speed}</span>}
+                {job.progress.eta && <span>ETA: {job.progress.eta}</span>}
+              </div>
+            </div>
+          )}
           {job?.result?.quality && (
             <p className="text-xs text-slate-500 mt-1">
               {job.result.quality === "audio"

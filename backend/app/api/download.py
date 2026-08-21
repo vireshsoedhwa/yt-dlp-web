@@ -28,6 +28,7 @@ from app.core.queue import (
     get_jobs_for_session,
     clear_job_for_session,
     check_rate_limit,
+    get_job_progress,
 )
 from app.core.config import RATE_LIMIT_DOWNLOADS, RATE_LIMIT_WINDOW_SECONDS
 from app.core.files_service import _validate_session_id
@@ -136,6 +137,7 @@ def get_job_status(job_id: str):
         "enqueued_at": job.enqueued_at.isoformat() if job.enqueued_at else None,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "ended_at": job.ended_at.isoformat() if job.ended_at else None,
+        "progress": get_job_progress(job.id) if status == "started" else None,
     }
 
 

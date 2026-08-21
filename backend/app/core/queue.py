@@ -151,6 +151,47 @@ def is_file_being_served(session_id: str, filename: str) -> bool:
     return get_redis().exists(_serving_flag_key(session_id, filename)) > 0
 
 
+# --- Job progress (real-time download progress from yt-dlp) ---
+
+def _progress_key(job_id: str) -> str:
+    """Return the Redis key for a job's progress data."""
+    return f"ytdlp:progress:{job_id}"
+
+
+def set_job_progress(job_id: str, percentage: str, speed: str, eta: str,
+                     downloaded_bytes: int, total_bytes: int) -> None:
+    """Store download progress for a job in Redis with a 300s TTL."""
+    redis = get_redis()
+    key = _progress_key(job_id)
+    redis.hset(key, mapping={
+        "percentage": percentage,
+        "speed": speed,
+        "eta": eta,
+        "downloaded_bytes": str(downloaded_bytes),
+        "total_bytes": str(total_bytes),
+    })
+    redis.expire(key, 300)
+
+
+def get_job_progress(job_id: str) -> dict | None:
+    """Return progress data for a job, or None if no progress is stored."""
+    raw = get_redis().hgetall(_progress_key(job_id))
+    if not raw:
+        return None
+    return {
+        "percentage": raw.get(b"percentage", b"").decode() if isinstance(raw.get(b"percentage"), bytes) else raw.get("percentage", ""),
+        "speed": raw.get(b"speed", b"").decode() if isinstance(raw.get(b"speed"), bytes) else raw.get("speed", ""),
+        "eta": raw.get(b"eta", b"").decode() if isinstance(raw.get(b"eta"), bytes) else raw.get("eta", ""),
+        "downloaded_bytes": int(raw.get(b"downloaded_bytes", b"0") or b"0"),
+        "total_bytes": int(raw.get(b"total_bytes", b"0") or b"0"),
+    }
+
+
+def clear_job_progress(job_id: str) -> None:
+    """Delete progress data for a job."""
+    get_redis().delete(_progress_key(job_id))
+
+
 # --- Rate limiting ---
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> bool:

@@ -242,7 +242,8 @@ def test_get_job_status_success(fake_job):
     fake_job.get_status.return_value = "started"  # in-progress to avoid dedup cleanup
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_session"):
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.get_job_progress", return_value=None):
         response = client.get("/api/download/abc12345")
 
     assert response.status_code == 200
@@ -258,7 +259,8 @@ def test_get_job_status_includes_timestamps(fake_job):
     fake_job.get_status.return_value = "started"  # in-progress to avoid dedup cleanup
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_session"):
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.get_job_progress", return_value=None):
         response = client.get("/api/download/abc12345")
 
     data = response.json()
@@ -361,7 +363,8 @@ def test_get_job_status_does_not_clear_dedup_while_in_progress():
 
     with patch("app.api.download.Job.fetch", return_value=fake_job), \
          patch("app.api.download.get_redis", return_value=MagicMock()), \
-         patch("app.api.download.clear_active_job_for_session") as mock_clear:
+         patch("app.api.download.clear_active_job_for_session") as mock_clear, \
+         patch("app.api.download.get_job_progress", return_value=None):
         response = client.get("/api/download/inprogress123")
 
     assert response.status_code == 200

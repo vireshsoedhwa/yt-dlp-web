@@ -67,6 +67,7 @@ const mockJobFinished: JobInfo = {
   enqueued_at: null,
   started_at: null,
   ended_at: null,
+  progress: null,
 };
 
 const mockJobFailed: JobInfo = {
@@ -77,6 +78,7 @@ const mockJobFailed: JobInfo = {
   enqueued_at: null,
   started_at: null,
   ended_at: null,
+  progress: null,
 };
 
 function makeApiError(status: number, message: string): ApiError {

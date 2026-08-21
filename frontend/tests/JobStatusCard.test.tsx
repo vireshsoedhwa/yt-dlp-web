@@ -38,6 +38,7 @@ function makeJob(overrides: Partial<JobInfo> = {}): JobInfo {
     enqueued_at: "2025-01-01T12:00:00",
     started_at: null,
     ended_at: null,
+    progress: null,
     ...overrides,
   };
 }
@@ -480,6 +481,42 @@ describe("JobStatusCard", () => {
       expect(screen.getByText("started")).toBeInTheDocument();
     });
     expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("should show progress bar when job is started with progress data", async () => {
+    mockGetJobStatus.mockResolvedValue(
+      makeJob({
+        status: "started",
+        progress: {
+          percentage: "45.2",
+          speed: "1.5MiB/s",
+          eta: "00:30",
+          downloaded_bytes: 10485760,
+          total_bytes: 23068672,
+        },
+      }),
+    );
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("45.2%")).toBeInTheDocument();
+    });
+    expect(screen.getByText("1.5MiB/s")).toBeInTheDocument();
+    expect(screen.getByText("ETA: 00:30")).toBeInTheDocument();
+  });
+
+  it("should not show progress bar when progress is null", async () => {
+    mockGetJobStatus.mockResolvedValue(makeJob({ status: "started" }));
+    render(
+      <JobStatusCard jobId="abc123" url="https://example.com" onDismiss={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("started")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("%")).not.toBeInTheDocument();
   });
 
   it("test_countdown_calls_onDismiss_at_zero", async () => {
