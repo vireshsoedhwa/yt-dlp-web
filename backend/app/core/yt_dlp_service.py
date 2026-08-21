@@ -49,9 +49,12 @@ _BASE_YDL_OPTS: dict = {
     },
 }
 
-# Add cookies file for YouTube authentication if configured
+# When cookies are configured, switch to web-only player client.
+# The android client uses a different API that ignores cookies entirely,
+# so it can't bypass YouTube's "sign in to confirm you're not a bot" check.
 if COOKIES_FILE:
     _BASE_YDL_OPTS["cookiefile"] = COOKIES_FILE
+    _BASE_YDL_OPTS["extractor_args"]["youtube"]["player_client"] = ["web"]
 
 
 def get_version() -> str:
