@@ -1,9 +1,16 @@
 FROM python:3.12-slim
 
 # Install ffmpeg (required by yt-dlp for merging/format conversion)
+# and unzip (needed to install deno, yt-dlp's JS runtime for YouTube extraction)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    unzip \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install deno — yt-dlp requires a JS runtime for YouTube's n-challenge solving
+RUN curl -fsSL https://deno.land/install.sh | sh
+ENV PATH="/root/.deno/bin:${PATH}"
 
 # Install yt-dlp and Python web framework dependencies
 COPY requirements.txt /tmp/requirements.txt
