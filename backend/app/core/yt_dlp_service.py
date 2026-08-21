@@ -166,7 +166,7 @@ def download_video(
             if job:
                 set_job_progress(
                     job.id,
-                    percentage=d.get("_percent_str", "0").strip(),
+                    percentage=d.get("_percent_str", "0").strip().rstrip("%"),
                     speed=d.get("_speed_str", ""),
                     eta=d.get("_eta_str", ""),
                     downloaded_bytes=d.get("downloaded_bytes", 0),
