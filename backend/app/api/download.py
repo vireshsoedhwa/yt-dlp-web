@@ -189,10 +189,42 @@ def dismiss_job(
     job_id: str,
     x_session_id: str | None = Header(None),
 ):
-    """Dismiss a job from the session's job list."""
+    """Dismiss a job from the session's job list.
+
+    If the job is still running (queued or started), it is cancelled
+    so the download stops and no more bandwidth/disk is wasted.
+    The dedup mapping is cleared so the same URL can be re-downloaded.
+    """
     if not x_session_id:
         raise HTTPException(status_code=400, detail="X-Session-ID header required")
 
+    # Fetch the job to check if it's still running
+    job_url = None
+    job_quality = None
+    try:
+        job = Job.fetch(job_id, connection=get_redis())
+        status = job.get_status()
+        job_url = job.kwargs.get("url") if job.kwargs else None
+        job_quality = job.kwargs.get("quality") if job.kwargs else None
+
+        if status in ("queued", "started"):
+            # Cancel the job — prevents queued jobs from starting
+            job.cancel()
+            # If started, attempt to stop the worker's current execution
+            if status == "started":
+                try:
+                    from rq.command import send_stop_job_command
+                    send_stop_job_command(get_redis(), job_id)
+                except Exception:
+                    pass  # Worker may not support stop commands
+    except NoSuchJobError:
+        pass  # Job already gone — just clean up session
+
+    # Clean up dedup mapping so the same URL can be re-downloaded
+    if job_url and job_quality:
+        clear_active_job_for_session(x_session_id, job_url, job_quality)
+
+    # Remove job from session hash
     clear_job_for_session(x_session_id, job_id)
 
     return {"deleted": job_id}

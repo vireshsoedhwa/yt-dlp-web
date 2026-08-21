@@ -425,9 +425,13 @@ def test_list_jobs_clears_expired_jobs():
 
 # --- DELETE /api/jobs/{job_id} ---
 
-def test_dismiss_job_removes_from_session():
+def test_dismiss_job_removes_from_session(fake_job):
     """DELETE /api/jobs/{job_id} should clear the job from the session."""
-    with patch("app.api.download.clear_job_for_session") as mock_clear:
+    fake_job.get_status.return_value = "finished"
+    with patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.clear_job_for_session") as mock_clear:
         response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
@@ -440,6 +444,76 @@ def test_dismiss_job_returns_400_without_session_header():
     """DELETE /api/jobs/{job_id} without X-Session-ID should return 400."""
     response = client.delete("/api/jobs/abc12345")
     assert response.status_code == 400
+
+
+def test_dismiss_queued_job_cancels_it(fake_job):
+    """Dismissing a queued job should call job.cancel() but not send_stop_job_command."""
+    fake_job.get_status.return_value = "queued"
+    with patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.clear_job_for_session"):
+        response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    fake_job.cancel.assert_called_once()
+
+
+def test_dismiss_started_job_cancels_and_stops(fake_job):
+    """Dismissing a started job should call job.cancel() and send_stop_job_command."""
+    fake_job.get_status.return_value = "started"
+    with patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.clear_job_for_session"), \
+         patch("rq.command.send_stop_job_command") as mock_stop:
+        response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    fake_job.cancel.assert_called_once()
+    mock_stop.assert_called_once()
+
+
+def test_dismiss_finished_job_does_not_cancel(fake_job):
+    """Dismissing a finished job should NOT call job.cancel()."""
+    fake_job.get_status.return_value = "finished"
+    with patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.clear_job_for_session"):
+        response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    fake_job.cancel.assert_not_called()
+
+
+def test_dismiss_nonexistent_job_still_succeeds():
+    """Dismissing a job that's already gone from Redis should still return 200."""
+    with patch("app.api.download.Job.fetch", side_effect=NoSuchJobError), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session"), \
+         patch("app.api.download.clear_job_for_session") as mock_clear:
+        response = client.delete("/api/jobs/nonexistent", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] == "nonexistent"
+    mock_clear.assert_called_once_with("test-session-123", "nonexistent")
+
+
+def test_dismiss_running_job_clears_dedup(fake_job):
+    """Dismissing a running job should clear the dedup mapping with url and quality."""
+    fake_job.get_status.return_value = "started"
+    with patch("app.api.download.Job.fetch", return_value=fake_job), \
+         patch("app.api.download.get_redis", return_value=MagicMock()), \
+         patch("app.api.download.clear_active_job_for_session") as mock_clear_dedup, \
+         patch("app.api.download.clear_job_for_session"), \
+         patch("rq.command.send_stop_job_command"):
+        response = client.delete("/api/jobs/abc12345", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    mock_clear_dedup.assert_called_once_with(
+        "test-session-123", "https://example.com/video", "1080p"
+    )
 
 
 # --- GET /api/jobs -- expired job filtering ---
